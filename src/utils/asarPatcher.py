@@ -154,20 +154,30 @@ def mainjs_patch(extracted_dir):
     with open(main_js_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # TODO: Change impl to regex match & Add replace failed err handling
+    def replace_with_check(content, old, new, desc):
+        new_content = content.replace(old, new)
+        if new_content == content:
+            raise RuntimeError(f"补丁匹配失败: 未找到目标片段 ({desc})")
+        return new_content
 
     content = 'const hook = require("./hook.js");\n' + content
-    content = content.replace(
+    content = replace_with_check(
+        content,
         "o.l=!0,o.exports}n.m=e",
         'o.l=!0,o.exports};const zeron = require("./zeron.js");n = zeron(n);n.m=e',
+        "zeron 注入点",
     )
-    content = content.replace(
+    content = replace_with_check(
+        content,
         "let f=new s(Object.assign({},{transparent:!0,",
         ";hook({ central: n, windowName: this.wname, config: c });let f=new s(Object.assign({},{transparent:!0,",
+        "hook 注入点",
     )
-    content = content.replace(
+    content = replace_with_check(
+        content,
         "enableRemoteModule:!0,devTools:!!c.canOpenDevTool},parent:this.parentWindow||null",
         'enableRemoteModule:!0,devTools:!!c.canOpenDevTool,preload: __dirname + "\\\\preload.js"},parent:this.parentWindow||null',
+        "preload 注入点",
     )
 
     with open(main_js_path, "w", encoding="utf-8") as f:

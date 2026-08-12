@@ -60,6 +60,14 @@ def download_file(url: str, dest_folder: str, filename: str) -> Path | str | Non
                                 )  # type: ignore
 
         log.success(f"文件 {filename} 下载成功。")
+        # 完整性校验: 当服务器提供 content-length 时, 校验实际下载字节数
+        if total_size > 0 and downloaded_size != total_size:
+            log.error(
+                f"文件 {filename} 下载不完整: 预期 {total_size} 字节, 实际 {downloaded_size} 字节"
+            )
+            if dest_path.exists():
+                os.remove(dest_path)
+            return None
         return dest_path
     except requests.exceptions.RequestException as e:
         log.error(f"下载文件 {filename} 时发生网络错误: {e}")

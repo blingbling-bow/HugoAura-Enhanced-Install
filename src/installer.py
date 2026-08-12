@@ -371,8 +371,14 @@ def run_installation(args, installerClassIns=None):
         if if_patch:
             update_progress(75, "[8 / 10] 置空校验数据")
             verifyJsonPath = install_dir_path.parent / "Verify.json"
-            if (verifyJsonPath.exists()):
-                verifyJsonPath.write_text("[]", encoding="utf-8")
+            if verifyJsonPath.exists():
+                try:
+                    verifyJsonPath.write_text("[]", encoding="utf-8")
+                    log.info("Verify.json 校验数据已置空")
+                except OSError as e:
+                    error_detail = f"写入 Verify.json 失败: {e}"
+                    log.critical(error_detail)
+                    raise Exception(error_detail)
 
             update_progress(80, "[8 / 10] 替换 ASAR 包")
             original_asar_path = install_dir_path / config.TARGET_ASAR_NAME
@@ -392,22 +398,29 @@ def run_installation(args, installerClassIns=None):
                     log.warning(f"创建 ASAR 备份失败: {e}")
 
             def del_original_asar():
-                if original_asar_path.exists():
-                    log.info(f"尝试删除旧的 {original_asar_path}...")
+                max_retries = 10
+                for attempt in range(1, max_retries + 1):
+                    if not original_asar_path.exists():
+                        log.info(f"未找到旧的 {config.TARGET_ASAR_NAME}, 跳过删除...")
+                        return
+                    log.info(
+                        f"尝试删除旧的 {original_asar_path} (第 {attempt}/{max_retries} 次)..."
+                    )
                     try:
                         if not args.dry_run:
                             os.remove(original_asar_path)
                         log.success(f"旧的 {config.TARGET_ASAR_NAME} 删除成功。")
                         time.sleep(0.2)
+                        return
                     except OSError as e:
                         log.error(
                             f"未能删除 {original_asar_path}: {e} | 旧的 ASAR 可能仍被占用中..."
                         )
-                        log.info("准备重试删除...")
                         time.sleep(0.5)
-                        del_original_asar()
-                else:
-                    log.info(f"未找到旧的 {config.TARGET_ASAR_NAME}, 跳过删除...")
+
+                raise Exception(
+                    f"多次尝试后仍无法删除 {config.TARGET_ASAR_NAME}, 请检查文件是否被其他进程占用"
+                )
 
             del_original_asar()
 
