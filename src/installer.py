@@ -14,6 +14,15 @@ import lifecycle as lifecycleMgr
 import typeDefs.lifecycle as lifecycleTypes
 
 
+class InstallError(Exception):
+    """安装流程错误, 携带退出码供 CLI 模式返回"""
+
+    def __init__(self, message, exit_code=1):
+        super().__init__(message)
+        self.message = message
+        self.exit_code = exit_code
+
+
 def fetch_github_releases():
     url = config.GITHUB_API_URL
     try:
@@ -33,7 +42,10 @@ def select_release_source(args=None):
         args: 命令行参数对象, 如果提供则尝试使用非交互式方式选择
 
     返回:
-        str: 版本标签或本地文件路径, 如果在非交互模式下失败则返回None
+        str: 版本标签或本地文件路径
+
+    异常:
+        InstallError: 非交互模式下失败时抛出, 携带对应退出码
     """
     # 如果指定了本地文件路径
     if args and args.path:
@@ -42,7 +54,7 @@ def select_release_source(args=None):
             return args.path
         else:
             log.error(f"指定的本地文件不存在: {args.path}")
-            sys.exit(7)
+            raise InstallError(f"指定的本地文件不存在: {args.path}", exit_code=7)
 
     # 如果指定了版本标签
     if args and args.version:
@@ -54,7 +66,7 @@ def select_release_source(args=None):
         log.error("无法获取版本信息")
         if args and args.yes:
             log.critical("非交互模式下无法获取版本信息, 安装终止")
-            sys.exit(4)  # 资源文件下载失败
+            raise InstallError("非交互模式下无法获取版本信息, 安装终止", exit_code=4)
         return input("请输入版本 Tag 或本地文件路径: ")
 
     # 分类发行版和预发行版
@@ -95,7 +107,7 @@ def select_release_source(args=None):
             return latest_pre
         else:
             log.critical("未找到有效版本, 安装终止")
-            sys.exit(7)  # 参数错误
+            raise InstallError("未找到有效版本, 安装终止", exit_code=7)
 
     # 交互式选择
     options = []
@@ -143,7 +155,7 @@ def run_installation(args, installerClassIns=None):
         installerClassIns: InstallerModel 实例
 
     返回:
-        bool: 安装是否成功
+        dict: {"success": bool, "errorInfo": str, "exit_code": int}
     """
     install_success = False
     install_dir_path = None
@@ -154,6 +166,7 @@ def run_installation(args, installerClassIns=None):
     if_patch = True
 
     error_detail = ""
+    exit_code = 1
 
     # 获取进度回调函数
     progress_callback = getattr(args, "progress_callback", None)
@@ -186,8 +199,7 @@ def run_installation(args, installerClassIns=None):
             install_dir_path_str = args.dir
             if not os.path.isdir(install_dir_path_str):
                 log.critical(f"指定的安装目录不存在: {install_dir_path_str}")
-                error_detail = "无效的管家安装目录"
-                return False
+                raise InstallError("无效的管家安装目录", exit_code=7)
             log.info(f"使用指定的安装目录: {install_dir_path_str}")
         else:
             install_dir_path_str = dirSearch.find_seewo_resources_dir()
@@ -195,13 +207,12 @@ def run_installation(args, installerClassIns=None):
                 log.critical("未能找到 SeewoServiceAssistant 安装目录")
                 if args and args.yes:
                     log.critical("非交互模式下无法手动输入安装目录, 安装终止")
-                    sys.exit(3)  # 未找到希沃管家安装目录
+                    raise InstallError("非交互模式下无法手动输入安装目录, 安装终止", exit_code=3)
                 log.info("您可以尝试手动输入安装目录:")
                 install_dir_path_str = input()
                 if not os.path.isdir(install_dir_path_str):
                     log.critical(f"指定的目录不存在: {install_dir_path_str}")
-                    error_detail = "无效的管家安装目录"
-                    return False
+                    raise InstallError("无效的管家安装目录", exit_code=7)
 
         install_dir_path = Path(install_dir_path_str)
 
@@ -228,12 +239,10 @@ def run_installation(args, installerClassIns=None):
                     log.critical(
                         "未能找到资源文件, 请确保 aura.zip 与 core.zip 在指定路径下存在"
                     )
-                    error_detail = "未能在提供的本地路径找到资源文件"
-                    return False
+                    raise InstallError("未能在提供的本地路径找到资源文件", exit_code=4)
             else:
                 log.critical("路径不存在, 请输入合法的文件夹路径")
-                error_detail = "无效的路径, 请检查路径输入"
-                return False
+                raise InstallError("无效的路径, 请检查路径输入", exit_code=7)
         else:
             update_progress(32, "[3 / 10] 正在下载资源文件")
             lifecycleMgr.callbacks[dlCallbackFuncName] = rep_dl_progress
@@ -242,8 +251,7 @@ def run_installation(args, installerClassIns=None):
             )
         if not downloaded_core_zip_path or not downloaded_aura_zip_path:
             log.critical("资源文件下载失败, 即将结束安装")
-            error_detail = "资源文件下载失败, 请检查网络连接及日志信息"
-            return False
+            raise InstallError("资源文件下载失败, 请检查网络连接及日志信息", exit_code=4)
 
         lifecycleMgr.callbacks[dlCallbackFuncName] = None
 
@@ -448,12 +456,18 @@ def run_installation(args, installerClassIns=None):
             log.info("版本信息和安装时间已写入注册表")
         except Exception as e:
             log.warning(f"写入注册表失败: {e}")
+    except InstallError as e:
+        error_detail = e.message
+        exit_code = e.exit_code
+        log.critical(f"安装失败: {error_detail}")
+        install_success = False
     except Exception as e:
         error_detail = e
         if installerClassIns and not installerClassIns.is_installing:
             log.warning(f"用户取消了安装操作")
         else:
             log.exception(f"安装过程中发生未知错误: {e}")
+        exit_code = 1
         install_success = False
     finally:
         update_progress(
@@ -486,4 +500,7 @@ def run_installation(args, installerClassIns=None):
             log.error(f"{config.APP_NAME} 安装失败")
             log.error("---------------------------------------------")
 
-        return {"success": install_success, "errorInfo": error_detail}
+    if install_success:
+        exit_code = 0
+
+    return {"success": install_success, "errorInfo": error_detail, "exit_code": exit_code}

@@ -93,19 +93,19 @@ def main():
             sys.exit(2)  # 权限不足
     else:
         log.info("管理工具正以管理员权限运行, 即将启动安装流程...")
-        success = False
+        result = {"success": False, "errorInfo": "", "exit_code": 1}
         try:
-            success = installer.run_installation(args)
+            result = installer.run_installation(args)
         except Exception as e:
             log.exception(f"执行安装流程时发生意外错误: {e}")
-            success = False
+            result = {"success": False, "errorInfo": str(e), "exit_code": 1}
         finally:
             time.sleep(1.0)
             if not args.yes:
                 print("\n按回车键退出...")
                 input()
 
-            sys.exit(0 if success else 1)
+            sys.exit(result.get("exit_code", 0 if result.get("success") else 1))
 
 
 if __name__ == "__main__":

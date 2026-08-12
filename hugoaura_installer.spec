@@ -122,8 +122,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=str(src_dir / 'app' / 'public' / 'installer.ico'),  # 设置图标
-    version_file=str(project_root / 'version_info.py'),  # 版本信息文件
     uac_admin=True,                # 请求管理员权限
     uac_uiaccess=False,
-    version="version_info.txt",
+    version=str(project_root / 'version_info.txt'),  # 版本信息文件
 )

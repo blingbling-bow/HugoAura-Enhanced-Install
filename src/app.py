@@ -3,6 +3,7 @@ HugoAura-Install GUI 启动器
 """
 
 import sys
+import os
 import ctypes
 from pathlib import Path
 from loguru import logger
@@ -43,18 +44,24 @@ def run_as_admin():
     """以管理员权限重新运行程序"""
     if is_admin():
         return True
-    
+
     try:
-        # 以管理员权限重新运行程序
-        ctypes.windll.shell32.ShellExecuteW(
-            None, 
-            "runas", 
-            sys.executable, 
-            f'"{__file__}"', 
-            None, 
-            1
+        script = os.path.abspath(sys.executable)
+        # 构建命令行参数, 完整传递所有参数 (如 --cli)
+        if len(sys.argv) > 1:
+            params = " ".join([f'"{arg}"' for arg in sys.argv[1:]])
+        else:
+            params = ""
+
+        ret = ctypes.windll.shell32.ShellExecuteW(
+            None, "runas", script, params, None, 1
         )
-        return False  # 需要退出当前进程
+
+        if ret <= 32:
+            print(f"提升权限失败。ShellExecuteW returned: {ret}")
+            return False
+
+        return False  # 已启动新的管理员进程, 需要退出当前进程
     except Exception as e:
         print(f"提升权限失败: {e}")
         return False
