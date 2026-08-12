@@ -21,7 +21,7 @@ def find_seewo_resources_dir() -> str | None:
     if not matches:
         log.error("未能找到希沃管家的安装目录。")
         log.error(
-            "请确认已正确安装希沃管家, 如果你确定这是管理工具的问题, 请提交 Issue: https://github.com/HugoAura/HugoAura-Install/issues"
+            "请确认已正确安装希沃管家, 如果你确定这是管理工具的问题, 请提交 Issue: https://github.com/blingbling-bow/HugoAura-Install/issues"
         )
         return None
     elif len(matches) > 1:

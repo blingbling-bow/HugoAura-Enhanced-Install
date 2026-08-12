@@ -8,13 +8,13 @@ HugoAura 的生命周期管理工具
 
 ## 简介
 
-这是一个用于 [HugoAura](https://github.com/HugoAura/Seewo-HugoAura) 的管理工具, 支持安装以及备份管理等功能。
+这是一个用于 [HugoAura-Enhanced](https://github.com/blingbling-bow/HugoAura-Enhanced) 的管理工具, 支持安装以及备份管理等功能。
 
 ## 使用方法
 
 ### 基本用法
 
-1. 下载最新的 [Release](https://github.com/HugoAura/HugoAura-Install/releases) EXE 包
+1. 下载最新的 [Release](https://github.com/blingbling-bow/HugoAura-Install/releases) EXE 包
 2. 以管理员身份运行 `AuraInstaller.exe`
 3. 按照提示选择版本并完成安装
 
@@ -94,4 +94,4 @@ HugoAura-Install.exe --cli -l -d "C:\Program Files (x86)\Seewo\SeewoService\Seew
 
 欢迎提交 Issues 和 Pull Request!
 
-如有关于 HugoAura 的使用问题 / 建议, 请勿提交至本 Repo。请前往 [HugoAura 主项目](https://github.com/HugoAura/Seewo-HugoAura) 提交 Issues。
+如有关于 HugoAura 的使用问题 / 建议, 请勿提交至本 Repo。请前往 [HugoAura 主项目](https://github.com/blingbling-bow/HugoAura-Enhanced) 提交 Issues。

@@ -156,7 +156,7 @@ def update_versions_file(versions_data: Dict, file_path: Path) -> bool:
 def main():
     """主函数"""
     # 配置
-    HUGOAURA_REPO = "HugoAura/Seewo-HugoAura"
+    HUGOAURA_REPO = "blingbling-bow/HugoAura-Enhanced"
     github_token = os.getenv("GITHUB_TOKEN")
     
     if not github_token:

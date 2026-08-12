@@ -9,12 +9,13 @@ import requests
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from loguru import logger as log
+from config.config import GITHUB_OWNER, GITHUB_REPO
 
 
 class VersionManager:
     """版本管理器"""
     
-    def __init__(self, github_repo: str = "HugoAura/Seewo-HugoAura", timeout: int = 3000):
+    def __init__(self, github_repo: str = f"{GITHUB_OWNER}/{GITHUB_REPO}", timeout: int = 3000):
         """
         初始化版本管理器
         

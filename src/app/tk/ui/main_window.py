@@ -53,7 +53,7 @@ class MainWindow:
 
         # 创建根窗口
         self.root = ttk_bs.Window(themename=theme)
-        self.root.title("HugoAura 安装器")
+        self.root.title("HugoAura-Enhanced 安装器")
 
         self.geometry_info = {
             "BASELINE_HEIGHT": 400,  # 增加基准高度以确保内容完整显示
@@ -620,7 +620,7 @@ class MainWindow:
         # 标题
         title_label = ttk_bs.Label(
             main_frame,
-            text="HugoAura 安装器",
+            text="HugoAura-Enhanced 安装器",
             font=("Microsoft YaHei UI", 20, "bold"),
             bootstyle=PRIMARY,
         )
@@ -1031,8 +1031,8 @@ HugoAura 是针对希沃设备的增强工具。
 
 作者: HugoAura Devs
 GUI 基于: ttkbootstrap & tkinter
-GitHub 主仓库: HugoAura/Seewo-HugoAura
-Install 主仓库: HugoAura/HugoAura-Install"""
+GitHub 主仓库: blingbling-bow/HugoAura-Enhanced
+Install 主仓库: blingbling-bow/HugoAura-Install"""
 
         messagebox.showinfo("关于 HugoAura-Install", about_text)
 

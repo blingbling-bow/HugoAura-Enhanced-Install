@@ -6,9 +6,9 @@ APP_NAME = "HugoAura"
 TARGET_PROCESS_NAME = ["SeewoServiceAssistant.exe", "SeewoCore.exe", "SeewoAbility.exe"]
 
 # GitHub 仓库信息
-GITHUB_OWNER = "HugoAura"
-GITHUB_REPO = "Seewo-HugoAura"
-GITHUB_DL_REPO = "Seewo-HugoAura"
+GITHUB_OWNER = "blingbling-bow"
+GITHUB_REPO = "HugoAura-Enhanced"
+GITHUB_DL_REPO = "HugoAura-Enhanced"
 
 # 文件名
 ASAR_FILENAME = "app-patched.asar"
