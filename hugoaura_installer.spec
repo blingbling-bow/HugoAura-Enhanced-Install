@@ -1,9 +1,11 @@
 import sys
 from pathlib import Path
+import ttkbootstrap
 
 # 获取项目根目录
 project_root = Path.cwd()
 src_dir = project_root / 'src'
+ttkbootstrap_dir = Path(ttkbootstrap.__file__).parent
 
 block_cipher = None
 
@@ -12,6 +14,7 @@ datas = [
     (str(src_dir / 'app' / 'public' / 'installer.ico'), 'app/public'),
     (str(src_dir / 'app' / 'public' / 'versions.json'), 'app/public'),
     (str(src_dir / 'config'), 'config'),
+    (str(ttkbootstrap_dir / 'assets'), 'ttkbootstrap/assets'),
 ]
 
 # 定义隐藏导入的模块
@@ -29,7 +32,7 @@ hiddenimports = [
     'ttkbootstrap.themes',
     'ttkbootstrap.style',
     'ttkbootstrap.widgets',
-    'ttkbootstrap.icons',
+    'ttkbootstrap.style.icons',
     
     # PIL/Pillow 相关 (ttkbootstrap依赖)
     'PIL',

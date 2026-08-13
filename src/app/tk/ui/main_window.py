@@ -109,6 +109,8 @@ class MainWindow:
 
         # 初始状态
         self.is_installing = False
+        # 标记窗口是否已完成首次自适应居中, 之后不再重复居中, 避免点击按钮时窗口跳回屏幕中央
+        self._window_centered = False
 
         # 异步加载版本信息
         self._load_versions_async()
@@ -267,6 +269,7 @@ class MainWindow:
             variable=self.specific_version_var,
             value=version_info["tag"],
             bootstyle=bootstyle,
+            takefocus=False,
         )
         radio.pack(side=LEFT, padx=(0, 6))
         
@@ -461,33 +464,70 @@ class MainWindow:
         # 重新加载版本信息
         self._load_versions_async(is_refresh=True)
 
-    def _handle_frame_resize(self, newFrameHeight):
+    def _handle_frame_resize(self, newFrameHeight=None):
         """
-        根据版本选择区域高度动态调整窗口高度, 并限制不超过屏幕高度。
+        根据整个内容框架的实际需求高度自适应窗口高度, 确保内容完整展示,
+        同时限制不超过屏幕可用区域 (预留边距避免贴边), 无需滚动即可看到全部内容。
 
-        在高 DPI + 高缩放比例的环境下, 如果窗口高度大于屏幕高度,
-        会出现只能看到左上角、无法点击底部按钮的问题 (见 Issue #33)。
-        这里根据屏幕高度做上限裁剪, 保证窗口始终完全可见。
+        宽度保持固定的紧凑值, 不随内容过度扩展, 避免产生多余空白区域。
+
+        参数 newFrameHeight 为兼容旧调用点保留, 已不再使用。
         """
+        # 让布局引擎先结算出内容框架的真实需求高度
         try:
-            base_height = (self.geometry_info["BASELINE_HEIGHT"] - 30) * self.geometry_info["scaleFactor"] + int(newFrameHeight)
+            self.root.update_idletasks()
+            content_height = self._main_frame.winfo_reqheight()
         except Exception:
-            base_height = self.geometry_info["BASELINE_HEIGHT"] * self.geometry_info["scaleFactor"]
+            content_height = None
 
-        # 获取当前屏幕逻辑高度, 预留一定边距避免贴边
-        screen_height = self.root.winfo_screenheight() or base_height
-        max_height = screen_height - 200
+        scale = self.geometry_info["scaleFactor"]
+        screen_height = self.root.winfo_screenheight() or (400 * scale)
 
-        final_height = min(base_height, max_height)
-        self.root.geometry(f"{int(self.geometry_info["BASELINE_WIDTH"] * self.geometry_info["scaleFactor"])}x{int(final_height)}")
+        # 宽度保持固定的紧凑值, 避免窗口过宽产生空白
+        final_width = int(self.geometry_info["BASELINE_WIDTH"] * scale)
+
+        # 预留边距, 避免窗口贴边/被任务栏遮挡
+        margin_y = 100
+
+        if content_height:
+            # geometry 的高度即客户区高度(标题栏在外), 直接等于内容需求高度即可精确贴合,
+            # 再加装饰高度会导致客户区比内容高一截, 底部出现留白
+            final_height = int(content_height)
+        else:
+            final_height = int(self.geometry_info["BASELINE_HEIGHT"] * scale)
+
+        # 限制在屏幕可用范围内
+        final_height = min(final_height, int(screen_height - margin_y))
+
+        # 首次自适应时重新居中; 之后保持窗口当前位置, 仅微调保证不超出屏幕
+        # (避免点击按钮触发高度变化时, 窗口每次都跳回屏幕中央)
+        try:
+            current_x = self.root.winfo_x()
+            current_y = self.root.winfo_y()
+            screen_width = self.root.winfo_screenwidth()
+            screen_height = self.root.winfo_screenheight()
+            final_x = min(max(current_x, 0), max(screen_width - final_width, 0))
+            final_y = min(max(current_y, 0), max(screen_height - final_height, 0))
+        except Exception:
+            final_x, final_y = 0, 0
+
+        if not self._window_centered:
+            self._window_centered = True
+            # 首次调用时窗口尚未达到最终尺寸, 直接居中
+            self.root.geometry(f"{final_width}x{final_height}")
+            self._center_window()
+        else:
+            self.root.geometry(f"{final_width}x{final_height}+{final_x}+{final_y}")
 
     def _center_window(self):
-        """窗口居中显示"""
+        """窗口居中显示, 并确保不会超出屏幕范围"""
         self.root.update_idletasks()
         width = self.root.winfo_width()
         height = self.root.winfo_height()
-        x = int((self.root.winfo_screenwidth() // 2) - (width // 2))
-        y = int((self.root.winfo_screenheight() // 2) - (height // 1.5))
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x = max(0, int((screen_width - width) // 2))
+        y = max(0, int((screen_height - height) // 2))
         self.root.geometry(f"{width}x{height}+{x}+{y}")
 
     def _on_scrollable_frame_configure(self, event):
@@ -532,15 +572,14 @@ class MainWindow:
         if canvas_width <= 1:  # 画布尚未初始化
             return
         
-        # 限制内容最大宽度, 保持 UI 不会过宽
-        max_content_width = 640
-        content_width = min(canvas_width - 40, max_content_width)
+        # 内容宽度完全铺满画布, 消除左右两侧的空白区域
+        content_width = canvas_width
         
         # 设置内容宽度
         canvas.itemconfigure(self._canvas_window, width=content_width)
         
-        # 计算水平居中位置: (画布宽度 - 内容宽度) / 2
-        center_x = max(0, (canvas_width - content_width) / 2)
+        # 内容从画布最左侧开始, 完全填充可视区域
+        center_x = 0
         
         # 获取当前滚动位置，以便在更新后恢复
         try:
@@ -588,7 +627,12 @@ class MainWindow:
         container.pack(fill=BOTH, expand=True)
 
         # 使用 Canvas + Scrollbar 实现垂直滚动
-        canvas = tk.Canvas(container, highlightthickness=0)
+        # 设置与主题一致的背景色, 避免内容未铺满时露出灰色区域
+        try:
+            _theme_bg = ttk_bs.Style().colors.bg
+        except Exception:
+            _theme_bg = "#F8F9FA"
+        canvas = tk.Canvas(container, highlightthickness=0, bg=_theme_bg)
         v_scrollbar = ttk_bs.Scrollbar(
             container, orient="vertical", command=canvas.yview
         )
@@ -600,7 +644,8 @@ class MainWindow:
         self._canvas = canvas
 
         # 真正放控件的主 Frame, 嵌入到 Canvas 中
-        main_frame = ttk_bs.Frame(canvas, padding=(20,))
+        main_frame = ttk_bs.Frame(canvas, padding=20)
+        self._main_frame = main_frame
         self._canvas_window = canvas.create_window(
             (0, 0), window=main_frame, anchor="nw"
         )
@@ -620,9 +665,10 @@ class MainWindow:
         # 标题
         title_label = ttk_bs.Label(
             main_frame,
-            text="HugoAura-Enhanced 安装器",
+            text="HugoAura 安装器\n增强版",
             font=("Microsoft YaHei UI", 20, "bold"),
             bootstyle=PRIMARY,
+            justify="center",
         )
         title_label.pack(pady=(0, 10))
 
@@ -640,6 +686,9 @@ class MainWindow:
 
         # 按钮区域
         self._create_button_section(main_frame)
+
+        # 初始时根据内容自适应窗口大小, 确保打开即可完整展示全部内容
+        self.root.after(100, self._handle_frame_resize)
 
     def _create_permission_status(self, parent):
         """创建权限状态显示区域"""
@@ -676,14 +725,14 @@ class MainWindow:
         """创建版本选择区域"""
         # 版本选择框架
         version_frame = ttk_bs.LabelFrame(
-            parent, text="版本选择"
+            parent, text="版本选择", padding=15, bootstyle=INFO
         )
         version_frame.pack(fill=X, pady=(0, 15))
         self.version_frame = version_frame
 
         # 版本类型选择标题和刷新按钮
         type_header_frame = ttk_bs.Frame(version_frame)
-        type_header_frame.pack(fill=X, padx=15, pady=(15, 5))
+        type_header_frame.pack(fill=X, pady=(0, 5))
 
         type_label = ttk_bs.Label(
             type_header_frame,
@@ -720,12 +769,13 @@ class MainWindow:
                 value=value,
                 command=self._update_version_inputs,
                 bootstyle=PRIMARY,
+                takefocus=False,
             )
-            radio.pack(anchor=W, pady=2, padx=(35, 15))
+            radio.pack(anchor=W, pady=2, padx=(20, 0))
 
         # 具体版本选择框架
         self.specific_version_frame = ttk_bs.LabelFrame(
-            version_frame, text="具体版本"
+            version_frame, text="具体版本", padding=10, bootstyle=SECONDARY
         )
 
         # 版本选择框架 (将动态创建)
@@ -760,12 +810,12 @@ class MainWindow:
     def _create_directory_section(self, parent):
         """创建安装目录选择区域"""
         directory_frame = ttk_bs.LabelFrame(
-            parent, text="安装目录 (可选)"
+            parent, text="安装目录 (可选)", padding=15, bootstyle=INFO
         )
         directory_frame.pack(fill=X, pady=(0, 15))
 
         dir_input_frame = ttk_bs.Frame(directory_frame)
-        dir_input_frame.pack(fill=X, padx=15, pady=(15, 5))
+        dir_input_frame.pack(fill=X)
 
         ttk_bs.Label(dir_input_frame, text="目录路径:").pack(side=LEFT)
         self.directory_entry = ttk_bs.Entry(
@@ -788,22 +838,33 @@ class MainWindow:
             font=("Microsoft YaHei UI", 9),
             bootstyle=(SECONDARY, ITALIC),
         )
-        hint_label.pack(anchor=W, padx=15, pady=(0, 15))
+        hint_label.pack(anchor=W, pady=(5, 0))
 
     def _create_progress_section(self, parent):
         """创建进度显示区域"""
         progress_frame = ttk_bs.LabelFrame(
-            parent, text="安装进度"
+            parent, text="安装进度", padding=15, bootstyle=INFO
         )
         progress_frame.pack(fill=X, pady=(0, 15))
 
-        # 状态标签
+        # 状态标签 + 百分比
+        progress_header = ttk_bs.Frame(progress_frame)
+        progress_header.pack(fill=X, pady=(0, 5))
+
         self.status_label = ttk_bs.Label(
-            progress_frame,
+            progress_header,
             textvariable=self.status_var,
             font=("Microsoft YaHei UI", 10, "bold"),
         )
-        self.status_label.pack(anchor=W, padx=15, pady=(15, 5))
+        self.status_label.pack(side=LEFT, anchor=W)
+
+        self.percent_label = ttk_bs.Label(
+            progress_header,
+            text="0%",
+            font=("Microsoft YaHei UI", 10, "bold"),
+            bootstyle=INFO,
+        )
+        self.percent_label.pack(side=RIGHT, anchor=E)
 
         # 进度条
         self.progress_bar = ttk_bs.Progressbar(
@@ -811,9 +872,9 @@ class MainWindow:
             variable=self.progress_var,
             length=400,
             mode="determinate",
-            bootstyle=INFO,
+            bootstyle="INFO-striped",
         )
-        self.progress_bar.pack(fill=X, padx=15, pady=(0, 5))
+        self.progress_bar.pack(fill=X, pady=(0, 5))
 
         # 当前步骤
         self.step_label = ttk_bs.Label(
@@ -822,19 +883,19 @@ class MainWindow:
             font=("Microsoft YaHei UI", 9),
             bootstyle=SECONDARY,
         )
-        self.step_label.pack(anchor=W, padx=15, pady=(0, 15))
+        self.step_label.pack(anchor=W)
 
     def _create_button_section(self, parent):
         """创建按钮区域"""
         button_frame = ttk_bs.Frame(parent)
-        button_frame.pack(fill=X, pady=(10, 0))
+        button_frame.pack(pady=(10, 0))
 
-        # 安装按钮
+        # 安装按钮 (主操作, 实色突出)
         self.install_btn = ttk_bs.Button(
             button_frame,
             text="开始安装",
             command=self._on_install_click,
-            bootstyle=(INFO, "outline"),
+            bootstyle=INFO,
             width=14,
         )
         self.install_btn.pack(side=LEFT, padx=(0, 10))
@@ -861,7 +922,7 @@ class MainWindow:
         self.cancel_btn.pack(side=LEFT)
 
         about_btn_frame = ttk_bs.Frame(parent)
-        about_btn_frame.pack(fill=X, pady=(10, 0))
+        about_btn_frame.pack(pady=(8, 0))
 
         # 关于按钮
         about_btn = ttk_bs.Button(
@@ -992,21 +1053,121 @@ class MainWindow:
 
     def _on_uninstall_click(self):
         """卸载按钮点击事件"""
-        # 显示确认对话框
-        confirm = messagebox.askyesno(
-            "确认卸载",
-            "确定要卸载HugoAura吗?\n\n卸载后希沃管家将恢复到原始状态\n此操作不可逆, 请确认",
-            icon="warning",
-        )
+        # 询问用户是否删除配置数据
+        user_data_choice = self._ask_user_data_action()
+        if user_data_choice is None:  # 用户取消
+            return
 
-        if confirm and self.uninstall_callback:
+        if self.uninstall_callback:
             # 收集卸载选项
             uninstall_options = {
-                "keep_user_data": False,  # TO DO
+                "keep_user_data": user_data_choice == "keep",
                 "force": False,
                 "dry_run": False,
             }
             self.uninstall_callback(uninstall_options)
+
+    def _ask_user_data_action(self):
+        """
+        弹出配置数据处理选择对话框, 询问卸载时是否删除配置数据
+
+        返回:
+            str: "keep" 保留配置数据 / "delete" 删除配置数据 / None 用户取消
+        """
+        result = {"value": None}
+
+        dialog = ttk_bs.Toplevel(self.root)
+        dialog.title("卸载确认")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()  # 模态, 阻止操作主窗口
+        dialog.protocol("WM_DELETE_WINDOW", lambda: result.update(value=None) or dialog.destroy())
+
+        container = ttk_bs.Frame(dialog, padding=20)
+        container.pack(fill=BOTH, expand=True)
+
+        ttk_bs.Label(
+            container,
+            text="确认卸载 HugoAura",
+            font=("Microsoft YaHei UI", 14, "bold"),
+            bootstyle=PRIMARY,
+        ).pack(pady=(0, 8))
+
+        ttk_bs.Label(
+            container,
+            text="卸载后希沃管家将恢复到原始状态, 此操作不可逆。\n请选择是否同时删除 HugoAura 的配置数据:",
+            font=("Microsoft YaHei UI", 10),
+        ).pack(anchor=W, pady=(0, 10))
+
+        # 保留配置数据说明
+        keep_frame = ttk_bs.LabelFrame(
+            container, text="保留配置数据", padding=10, bootstyle=SUCCESS
+        )
+        keep_frame.pack(fill=X, pady=(0, 8))
+        ttk_bs.Label(
+            keep_frame,
+            text="配置文件、用户偏好设置及本地存储数据将完整保留,\n卸载后重新安装可恢复之前的配置。",
+            font=("Microsoft YaHei UI", 9),
+        ).pack(anchor=W)
+
+        # 删除配置数据说明
+        delete_frame = ttk_bs.LabelFrame(
+            container, text="删除配置数据", padding=10, bootstyle=DANGER
+        )
+        delete_frame.pack(fill=X, pady=(0, 14))
+        ttk_bs.Label(
+            delete_frame,
+            text="所有配置文件、用户偏好设置及本地存储数据将被彻底清除,\n卸载后将无法恢复。",
+            font=("Microsoft YaHei UI", 9),
+        ).pack(anchor=W)
+
+        # 按钮
+        button_frame = ttk_bs.Frame(container)
+        button_frame.pack(fill=X)
+
+        def choose(value):
+            result["value"] = value
+            dialog.destroy()
+
+        ttk_bs.Button(
+            button_frame,
+            text="保留配置数据",
+            command=lambda: choose("keep"),
+            bootstyle=SUCCESS,
+            width=14,
+        ).pack(side=LEFT, padx=(0, 10))
+
+        ttk_bs.Button(
+            button_frame,
+            text="删除配置数据",
+            command=lambda: choose("delete"),
+            bootstyle=(DANGER, "outline"),
+            width=14,
+        ).pack(side=LEFT, padx=(0, 10))
+
+        ttk_bs.Button(
+            button_frame,
+            text="取消",
+            command=lambda: choose(None),
+            bootstyle=SECONDARY,
+            width=10,
+        ).pack(side=LEFT)
+
+        # 将对话框居中显示在主窗口上方
+        dialog.update_idletasks()
+        parent_x = self.root.winfo_rootx()
+        parent_y = self.root.winfo_rooty()
+        parent_w = self.root.winfo_width()
+        parent_h = self.root.winfo_height()
+        dlg_w = dialog.winfo_reqwidth()
+        dlg_h = dialog.winfo_reqheight()
+        dialog.geometry(
+            f"+{max(parent_x + (parent_w - dlg_w) // 2, 0)}"
+            f"+{max(parent_y + (parent_h - dlg_h) // 2, 0)}"
+        )
+
+        dialog.wait_window()
+        return result["value"]
 
     def _on_cancel_click(self):
         """取消按钮点击事件"""
@@ -1051,18 +1212,20 @@ Install 主仓库: blingbling-bow/HugoAura-Install"""
     def update_progress(self, progress: int, step: str = "", status: str | None = None):
         """更新进度"""
         self.progress_var.set(progress)
+        if hasattr(self, "percent_label"):
+            self.percent_label.config(text=f"{progress}%")
         if step:
             self.step_var.set(step)
         if status:
             match status:
                 case "success":
-                    self.progress_bar.config(bootstyle=SUCCESS)
+                    self.progress_bar.config(bootstyle="SUCCESS-striped")
                 case "info":
-                    self.progress_bar.config(bootstyle=INFO)
+                    self.progress_bar.config(bootstyle="INFO-striped")
                 case "error":
-                    self.progress_bar.config(bootstyle=DANGER)
+                    self.progress_bar.config(bootstyle="DANGER-striped")
                 case "warn":
-                    self.progress_bar.config(bootstyle=WARNING)
+                    self.progress_bar.config(bootstyle="WARNING-striped")
                 case _:
                     pass
         self.root.update_idletasks()
