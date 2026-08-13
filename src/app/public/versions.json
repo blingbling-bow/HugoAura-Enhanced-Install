@@ -1,44 +1,18 @@
 {
-  "last_updated": "2025-01-31T12:00:00Z",
+  "last_updated": "2026-08-12T12:23:18Z",
   "releases": [
     {
-      "tag": "v0.1.1-beta",
-      "name": "[Rel] v0.1.1-beta",
+      "tag": "v0.2.0-rc2",
+      "name": "[Rel]v0.2.0-rc2",
       "type": "release"
     },
     {
-      "tag": "v0.1.0-beta", 
-      "name": "[Rel] v0.1.0 Beta",
+      "tag": "v0.2.0-rc1-p4",
+      "name": "[Rel] v0.2.0-rc1-p4",
       "type": "release"
     }
   ],
-  "prereleases": [
-    {
-      "tag": "v0.1.1-pre-IV-patch-3",
-      "name": "[Pre] v0.1.1-pre-IV-patch-3",
-      "type": "prerelease"
-    },
-    {
-      "tag": "v0.1.1-pre-IV",
-      "name": "[Pre] v0.1.1-pre-IV", 
-      "type": "prerelease"
-    },
-    {
-      "tag": "v0.1.1-pre-III",
-      "name": "[Pre] v0.1.1-pre-III",
-      "type": "prerelease"
-    },
-    {
-      "tag": "v0.1.1-pre-II",
-      "name": "[Pre] v0.1.1-pre-II",
-      "type": "prerelease"
-    },
-    {
-      "tag": "v0.1.1-pre-I",
-      "name": "[Pre] v0.1.1-pre-I",
-      "type": "prerelease"
-    }
-  ],
+  "prereleases": [],
   "ci_builds": [
     {
       "tag": "vAutoBuild-a03a2c3",
@@ -46,4 +20,4 @@
       "type": "ci"
     }
   ]
-} 
+}

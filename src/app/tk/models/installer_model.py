@@ -270,16 +270,12 @@ class InstallerModel:
         version = self.install_options["version"]
         version_type = self.install_options.get("version_type", "")
         
-        # 内置版本标签列表
+        # 内置版本标签列表 (CLI 兼容, 与 GitHub 上真实存在的 release tag 对齐)
+        # 注意: CI 构建 tag 形如 vAutoBuild-<commit短hash> 且持续更新,
+        #       不应在此硬编码, 以免再次出现过时 tag 导致下载旧构建的问题
         built_in_versions = [
-            "v0.1.1-beta",
-            "v0.1.0-beta", 
-            "v0.1.1-pre-IV-patch-3",
-            "v0.1.1-pre-IV",
-            "v0.1.1-pre-III",
-            "v0.1.1-pre-II",
-            "v0.1.1-pre-I",
-            "vAutoBuild"
+            "v0.2.0-rc2",
+            "v0.2.0-rc1-p4",
         ]
         
         # 根据版本类型和具体版本进行处理

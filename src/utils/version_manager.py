@@ -104,20 +104,21 @@ class VersionManager:
                 if release.get("draft", False):
                     continue  # 跳过草稿版本
 
-                version_info = {
-                    "tag": release["tag_name"],
-                    "name": f"{release['name'] or release['tag_name']}",
-                    "type": "prerelease" if release["prerelease"] else "release",
-                    "published_at": release.get("published_at"),
-                    "download_url": self._get_download_url(release)
-                }
-                
                 # 识别 CI 自动构建版本: tag 以 vAutoBuild 开头, 或 name 以 [CI] 开头
                 # (CI 构建 tag 形如 vAutoBuild-<commit短hash>, 每次构建独立 tag)
                 tag_name = release["tag_name"] or ""
                 release_name = release.get("name") or ""
-                if tag_name.startswith("vAutoBuild") or release_name.startswith("[CI]"):
-                    version_info["type"] = "ci"
+                is_ci = tag_name.startswith("vAutoBuild") or release_name.startswith("[CI]")
+
+                version_info = {
+                    "tag": release["tag_name"],
+                    "name": f"{release['name'] or release['tag_name']}",
+                    "type": "ci" if is_ci else ("prerelease" if release["prerelease"] else "release"),
+                    "published_at": release.get("published_at"),
+                    "download_url": self._get_download_url(release)
+                }
+
+                if is_ci:
                     ci_releases.append(version_info)
                     continue
                 
