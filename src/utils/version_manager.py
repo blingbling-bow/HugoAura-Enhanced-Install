@@ -98,13 +98,11 @@ class VersionManager:
             # 分类版本
             releases = []
             prereleases = []
+            ci_releases = []
             
             for release in releases_data:
                 if release.get("draft", False):
                     continue  # 跳过草稿版本
-                
-                if "AutoBuild" in release["tag_name"]:
-                    continue  # 跳过 CI 版本
 
                 version_info = {
                     "tag": release["tag_name"],
@@ -114,19 +112,28 @@ class VersionManager:
                     "download_url": self._get_download_url(release)
                 }
                 
+                # 识别 CI 自动构建版本: tag 以 vAutoBuild 开头, 或 name 以 [CI] 开头
+                # (CI 构建 tag 形如 vAutoBuild-<commit短hash>, 每次构建独立 tag)
+                tag_name = release["tag_name"] or ""
+                release_name = release.get("name") or ""
+                if tag_name.startswith("vAutoBuild") or release_name.startswith("[CI]"):
+                    version_info["type"] = "ci"
+                    ci_releases.append(version_info)
+                    continue
+                
                 if release["prerelease"] and len(prereleases) <= 5: # 仅显示前 5 个版本
                     prereleases.append(version_info)
                 elif len(releases) <= 5: # 同上
                     releases.append(version_info)
             
-            # CI 构建版本 (目前唯一)
-            ci_builds = [
-                {
-                    "tag": "vAutoBuild",
-                    "name": "[CI] HugoAura Auto Build Release",
-                    "type": "ci"
-                }
-            ]
+            # 从所有 CI 构建中选取最新构建 (按发布时间倒序, 取第一个)
+            ci_builds = []
+            if ci_releases:
+                ci_releases.sort(
+                    key=lambda r: r.get("published_at") or "",
+                    reverse=True,
+                )
+                ci_builds = [ci_releases[0]]
             
             return {
                 "releases": releases,

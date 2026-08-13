@@ -41,8 +41,8 @@
   ],
   "ci_builds": [
     {
-      "tag": "vAutoBuild",
-      "name": "[CI] HugoAura Auto Build Release",
+      "tag": "vAutoBuild-a03a2c3",
+      "name": "[CI] HugoAura Auto Build Release (a03a2c3)",
       "type": "ci"
     }
   ]
