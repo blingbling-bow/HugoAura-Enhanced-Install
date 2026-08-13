@@ -1,8 +1,8 @@
 VSVersionInfo(
     ffi=FixedFileInfo(
         # 文件版本信息
-        filevers=(0, 0, 3, 0),
-        prodvers=(0, 0, 3, 0),
+        filevers=(0, 0, 4, 0),
+        prodvers=(0, 0, 4, 0),
         
         # 文件标志掩码
         mask=0x3f,
@@ -26,12 +26,12 @@ VSVersionInfo(
                     [
                         StringStruct(u'CompanyName', u'HugoAura Devs'),
                         StringStruct(u'FileDescription', u'HugoAura Install - 希沃设备增强工具安装程序'),
-                        StringStruct(u'FileVersion', u'0.0.3-beta-III'),
+                        StringStruct(u'FileVersion', u'0.0.4-beta'),
                         StringStruct(u'InternalName', u'HugoAura Install'),
                         StringStruct(u'LegalCopyright', u'Copyright © 2025 HugoAura Devs. All rights reserved.'),
                         StringStruct(u'OriginalFilename', u'AuraInstaller.exe'),
                         StringStruct(u'ProductName', u'HugoAura Install'),
-                        StringStruct(u'ProductVersion', u'0.0.3'),
+                        StringStruct(u'ProductVersion', u'0.0.4'),
                     ]
                 )
             ]
