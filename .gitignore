@@ -8,3 +8,6 @@ docs_temp/
 
 # Editor files
 .vscode/
+
+# Mimosa 本地安全扫描运行记录
+.mimosa/

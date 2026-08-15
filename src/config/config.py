@@ -19,14 +19,23 @@ EXTRACTED_FOLDER_NAME = "aura"
 
 # 下载 URL 列表
 BASE_DOWNLOAD_URLS = [
+    f"https://git.yylx.win/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://cfgh.ikgy.top/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://gh.927223.xyz/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://github.tbap.top/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://ghproxy.felicity.land/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://gh.07150721.xyz/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://ghf.xn--eqrr82bzpe.top/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://gh.dpik.top/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://gh-proxy.org/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://axisnow.gh-proxy.org/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://cdn.gh-proxy.org/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://v4.gh-proxy.org/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://v6.gh-proxy.org/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
     f"https://gh.llkk.cc/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://gitproxy.127731.xyz/github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://bgithub.xyz/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
     f"https://github.dpik.top/github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://gh.catmak.name/github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
     f"https://ghfast.top/github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
     f"https://ghproxy.net/github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://github.tbedu.top/github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
     f"https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
 ]
 

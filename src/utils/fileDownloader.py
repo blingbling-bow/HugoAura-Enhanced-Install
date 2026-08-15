@@ -1,9 +1,12 @@
+import ipaddress
+import socket
 import requests
 import time
 import zipfile
 import shutil
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 from loguru import logger as log
 from config.config import (
     BASE_DOWNLOAD_URLS,
@@ -22,9 +25,49 @@ from typing import List, Tuple
 desiredTag = None
 
 
+def _is_safe_url(url: str) -> bool:
+    """校验下载 URL, 仅允许 http/https 且所有解析结果均为公网地址。
+
+    采用“任一地址不安全即拒绝”的严格策略, 防止 DNS rebinding:
+    若某个域名同时解析出公网和内网地址, 应视为不可信, 而不是放行。
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+
+    if parsed.scheme not in ("http", "https"):
+        return False
+
+    host = parsed.hostname
+    if not host:
+        return False
+
+    try:
+        for info in socket.getaddrinfo(host, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if (
+                ip.is_loopback
+                or ip.is_private
+                or ip.is_link_local
+                or ip.is_reserved
+                or ip.is_multicast
+                or ip.is_unspecified
+            ):
+                return False
+    except Exception:
+        return False
+
+    return True
+
+
 def download_file(url: str, dest_folder: str, filename: str) -> Path | str | None:
     dest_path = Path(dest_folder) / filename
     log.info(f"正在从 {url} 下载 {filename}, 目标目录: {dest_path}")
+
+    if not _is_safe_url(url):
+        log.error(f"拒绝下载非法 URL (仅允许 http/https 公网地址): {url}")
+        return None
 
     try:
         dest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -87,6 +130,10 @@ async def test_download_source_speed(
     base_url: str, test_filename: str = None
 ) -> Tuple[str, float, bool]:
     test_url = f"{base_url}/{desiredTag}/{AURA_FILENAME}" if test_filename else base_url
+
+    if not _is_safe_url(test_url):
+        log.warning(f"跳过非法测速 URL: {test_url}")
+        return (base_url, float("inf"), False)
 
     try:
         start_time = time.time()

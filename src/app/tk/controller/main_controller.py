@@ -2,6 +2,7 @@
 主控制器
 """
 
+import threading
 from typing import Dict, Any
 from loguru import logger
 
@@ -33,6 +34,7 @@ class MainController:
         """绑定界面事件"""
         # 设置按钮回调
         self.view.set_install_callback(self._on_install)
+        self.view.set_update_callback(self._on_update)
         self.view.set_cancel_callback(self._on_cancel)
         self.view.set_uninstall_callback(self._on_uninstall)
 
@@ -80,17 +82,45 @@ class MainController:
             self.view.show_message("错误", f"安装启动失败: {str(e)}", "error")
             self.view.set_installing_state(False)
 
+    def _on_update(self):
+        """处理一键更新事件"""
+        logger.info("用户请求一键更新")
+
+        if self.model.current_operation is not None:
+            return
+
+        try:
+            # 设置UI为安装状态
+            self.view.set_installing_state(True, "更新")
+
+            # 开始更新
+            success, message = self.model.start_update()
+            if not success:
+                self.view.show_message("提示", message, "info")
+                self.view.set_installing_state(False)
+                return
+
+            logger.info("更新已开始")
+
+        except Exception as e:
+            logger.error(f"更新启动失败: {e}")
+            self.view.show_message("错误", f"更新启动失败: {str(e)}", "error")
+            self.view.set_installing_state(False)
+
     def _on_cancel(self):
         """处理取消事件"""
         logger.info("用户请求取消操作")
 
+        op = self.model.current_operation
+
         # 显示确认对话框
-        if self.model.is_installing:
-            if messagebox.askyesno("确认", "确定要取消安装吗？"):
+        if op in ("install", "update"):
+            operation = "更新" if op == "update" else "安装"
+            if messagebox.askyesno("确认", f"确定要取消{operation}吗？"):
                 self.model.cancel_install()
                 self.view.set_installing_state(False)
-                logger.info("安装已取消")
-        elif self.model.is_uninstalling:
+                logger.info(f"{operation}已取消")
+        elif op == "uninstall":
             if messagebox.askyesno("确认", "确定要取消卸载吗？"):
                 self.model.cancel_uninstall()
                 self.view.set_installing_state(False)
@@ -134,17 +164,22 @@ class MainController:
         logger.info("用户请求关闭窗口")
 
         # 如果正在执行操作, 询问是否确认关闭
-        if self.model.is_installing or self.model.is_uninstalling:
-            operation = "安装" if self.model.is_installing else "卸载"
+        op = self.model.current_operation
+        if op is not None:
+            operation = {
+                "install": "安装",
+                "update": "更新",
+                "uninstall": "卸载",
+            }.get(op, "操作")
             if not messagebox.askyesno(
                 "确认", f"{operation}正在进行中, 确定要退出吗？"
             ):
                 return
 
             # 取消操作
-            if self.model.is_installing:
+            if op in ("install", "update"):
                 self.model.cancel_install()
-            elif self.model.is_uninstalling:
+            elif op == "uninstall":
                 self.model.cancel_uninstall()
 
         # 清理资源
@@ -227,21 +262,82 @@ class MainController:
         try:
             # 检查是否已安装
             is_installed = self.model.check_hugoaura_installed()
-            
+
             if is_installed:
                 # 如果已安装, 禁用安装按钮并更新状态
+                self.view.set_install_button_visible(True)
                 self.view.set_install_button_state(False, "已安装")
+                self.view.set_update_button_visible(False)
                 self.view.update_status("HugoAura 已安装")
                 logger.info("检测到 HugoAura 已安装, 安装按钮已禁用")
+
+                # 后台检查是否有可用的更新
+                self._check_update_async()
             else:
                 # 如果未安装, 确保安装按钮可用
+                self.view.set_install_button_visible(True)
                 self.view.set_install_button_state(True, "开始安装")
+                self.view.set_update_button_state(False, "一键更新")
+                self.view.set_update_button_visible(False)
                 logger.info("HugoAura 未安装, 安装按钮可用")
-                
+
         except Exception as e:
             logger.error(f"检查安装状态失败: {e}")
             # 出错时默认允许安装
+            self.view.set_install_button_visible(True)
             self.view.set_install_button_state(True, "开始安装")
+            self.view.set_update_button_state(False, "一键更新")
+            self.view.set_update_button_visible(False)
+
+    def _check_update_async(self):
+        """后台检查已安装版本是否可更新"""
+        def worker():
+            try:
+                info = self.model.get_update_available()
+            except Exception as e:
+                logger.error(f"检查更新失败: {e}")
+                info = {
+                    "installed": True,
+                    "installed_version": None,
+                    "latest_version": None,
+                    "update_available": False,
+                }
+            self.view.root.after(0, lambda: self._on_update_available(info))
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+
+    def _on_update_available(self, info: Dict[str, Any]):
+        """根据更新检测结果更新一键更新按钮"""
+        if not info.get("installed"):
+            self.view.set_update_button_visible(False)
+            return
+
+        update_available = info.get("update_available", False)
+
+        if update_available:
+            installed_version = info.get("installed_version") or "未知"
+            latest_version = info.get("latest_version") or "未知"
+
+            # 有可用更新时隐藏“已安装”按钮, 避免按钮过多挤掉“取消”按钮
+            self.view.set_install_button_visible(False)
+            self.view.set_update_button_visible(True)
+            self.view.set_update_button_state(True, "一键更新")
+            self.view.update_status(f"发现新版本 {latest_version}")
+            self.view.step_var.set(
+                f"当前版本 {installed_version} → 最新版本 {latest_version}"
+            )
+            logger.info(
+                f"检测到可更新版本: {installed_version} -> {latest_version}"
+            )
+        else:
+            # 已是最新时恢复“已安装”按钮, 并隐藏更新按钮
+            self.view.set_update_button_visible(False)
+            self.view.set_update_button_state(False, "已是最新")
+            self.view.set_install_button_visible(True)
+            self.view.update_status("HugoAura 已是最新版本")
+            self.view.step_var.set("当前已是最新版本")
+            logger.info("HugoAura 已是最新版本")
 
 
 # 便捷函数

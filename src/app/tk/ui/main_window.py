@@ -81,6 +81,7 @@ class MainWindow:
 
         # 回调函数
         self.install_callback: Optional[Callable] = None
+        self.update_callback: Optional[Callable] = None
         self.uninstall_callback: Optional[Callable] = None
         self.cancel_callback: Optional[Callable] = None
 
@@ -900,6 +901,15 @@ class MainWindow:
         )
         self.install_btn.pack(side=LEFT, padx=(0, 10))
 
+        # 一键更新按钮 (默认隐藏, 仅在检测到可用更新时显示)
+        self.update_btn = ttk_bs.Button(
+            button_frame,
+            text="一键更新",
+            command=self._on_update_click,
+            bootstyle=(SUCCESS, "outline"),
+            width=14,
+        )
+
         # 卸载按钮
         self.uninstall_btn = ttk_bs.Button(
             button_frame,
@@ -1051,6 +1061,11 @@ class MainWindow:
             }
             self.install_callback(options)
 
+    def _on_update_click(self):
+        """一键更新按钮点击事件"""
+        if self.update_callback:
+            self.update_callback()
+
     def _on_uninstall_click(self):
         """卸载按钮点击事件"""
         # 询问用户是否删除配置数据
@@ -1183,6 +1198,7 @@ HugoAura 是针对希沃设备的增强工具。
 
 主要功能:
 • 一键安装 HugoAura
+• 一键更新到最新版
 • 智能检测希沃管家
 • 自动备份原始文件  
 • 一键完全卸载
@@ -1200,6 +1216,10 @@ Install 主仓库: blingbling-bow/HugoAura-Install"""
     def set_install_callback(self, callback: Callable):
         """设置安装回调函数"""
         self.install_callback = callback
+
+    def set_update_callback(self, callback: Callable):
+        """设置一键更新回调函数"""
+        self.update_callback = callback
 
     def set_cancel_callback(self, callback: Callable):
         """设置取消回调函数"""
@@ -1236,14 +1256,20 @@ Install 主仓库: blingbling-bow/HugoAura-Install"""
         self.root.update_idletasks()
 
     def set_installing_state(self, installing: bool, operation: str = "安装"):
-        """设置安装/卸载状态"""
+        """设置安装/更新/卸载状态"""
         self.is_installing = installing
         if installing:
             if operation == "卸载":
                 self.install_btn.config(state=DISABLED)
+                self.update_btn.config(state=DISABLED)
                 self.uninstall_btn.config(state=DISABLED, text="卸载中...")
+            elif operation == "更新":
+                self.install_btn.config(state=DISABLED)
+                self.update_btn.config(state=DISABLED, text="更新中...")
+                self.uninstall_btn.config(state=DISABLED)
             else:
                 self.install_btn.config(state=DISABLED, text="安装中...")
+                self.update_btn.config(state=DISABLED)
                 self.uninstall_btn.config(state=DISABLED)
             self.cancel_btn.config(state=NORMAL)
             # 禁用刷新按钮
@@ -1261,6 +1287,7 @@ Install 主仓库: blingbling-bow/HugoAura-Install"""
                 widget.config(state=DISABLED)
         else:
             self.install_btn.config(state=NORMAL, text="开始安装")
+            self.update_btn.config(state=NORMAL, text="一键更新")
             self.uninstall_btn.config(state=NORMAL, text="开始卸载")
             self.cancel_btn.config(state=DISABLED)
             # 恢复刷新按钮
@@ -1277,6 +1304,38 @@ Install 主仓库: blingbling-bow/HugoAura-Install"""
             self.install_btn.config(state=NORMAL, text=text)
         else:
             self.install_btn.config(state=DISABLED, text=text)
+
+    def set_update_button_state(self, enabled: bool, text: str = "一键更新"):
+        """设置一键更新按钮状态"""
+        if enabled:
+            self.update_btn.config(state=NORMAL, text=text)
+        else:
+            self.update_btn.config(state=DISABLED, text=text)
+
+    def set_update_button_visible(self, visible: bool):
+        """显示或隐藏一键更新按钮"""
+        if visible:
+            # 插入到安装按钮和卸载按钮之间, 保持原有布局顺序
+            self.update_btn.pack(
+                side=LEFT, padx=(0, 10), before=self.uninstall_btn
+            )
+        else:
+            self.update_btn.pack_forget()
+
+    def set_install_button_visible(self, visible: bool):
+        """显示或隐藏安装按钮"""
+        if visible:
+            # 安装按钮始终位于最左侧; 依据更新按钮当前是否可见决定插入位置
+            if self.update_btn.winfo_manager() == "pack":
+                self.install_btn.pack(
+                    side=LEFT, padx=(0, 10), before=self.update_btn
+                )
+            else:
+                self.install_btn.pack(
+                    side=LEFT, padx=(0, 10), before=self.uninstall_btn
+                )
+        else:
+            self.install_btn.pack_forget()
 
     def show_message(self, title: str, message: str, msg_type: str = "info"):
         """显示消息对话框"""

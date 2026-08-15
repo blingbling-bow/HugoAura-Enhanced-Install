@@ -7,8 +7,11 @@ import threading
 from typing import Callable, Optional, Dict, Any
 import argparse
 
+from loguru import logger
+
 from installer import run_installation
 from uninstaller import run_uninstallation, get_uninstall_info, check_hugoaura_installation
+from utils.version_manager import version_manager
 
 
 class InstallerModel:
@@ -21,6 +24,9 @@ class InstallerModel:
         self.current_step = ""
         self.is_installing = False
         self.is_uninstalling = False
+        # 当前操作: None / "install" / "update" / "uninstall"
+        # 作为唯一的状态判别来源, 避免多个布尔标志同时为 True 造成歧义。
+        self.current_operation: Optional[str] = None
         self.install_thread = None
 
         # 回调函数
@@ -103,6 +109,7 @@ class InstallerModel:
             return False, message
 
         self.is_installing = True
+        self.current_operation = "install"
         self.install_progress = 0
         self.update_status("正在安装...")
 
@@ -112,12 +119,35 @@ class InstallerModel:
 
         return True, "安装已开始"
 
+    def start_update(self):
+        """一键更新到最新稳定版"""
+        if self.is_installing or self.is_uninstalling:
+            return False, "任务正在进行中"
+
+        is_installed, _ = check_hugoaura_installation()
+        if not is_installed:
+            return False, "HugoAura 尚未安装, 无法更新"
+
+        self.is_installing = True
+        self.current_operation = "update"
+        self.install_progress = 0
+        self.update_status("正在更新...")
+
+        self.install_thread = threading.Thread(
+            target=self._install_worker, kwargs={"is_update": True}
+        )
+        self.install_thread.daemon = True
+        self.install_thread.start()
+
+        return True, "更新已开始"
+
     def start_uninstall(self):
         """开始卸载"""
         if self.is_installing or self.is_uninstalling:
             return False, "操作正在进行中"
 
         self.is_uninstalling = True
+        self.current_operation = "uninstall"
         self.install_progress = 0
         self.update_status("正在卸载...")
 
@@ -127,59 +157,64 @@ class InstallerModel:
 
         return True, "卸载已开始"
 
-    def _install_worker(self):
-        """安装工作线程"""
+    def _install_worker(self, is_update: bool = False):
+        """安装 / 更新工作线程"""
+        operation_name = "更新" if is_update else "安装"
         try:
             # 构建命令行参数对象
-            args = self._build_install_args()
+            args = (
+                self._build_update_args()
+                if is_update
+                else self._build_install_args()
+            )
 
             # 传递进度回调函数给安装器
             args.progress_callback = self.update_progress
             args.status_callback = self.update_status
 
-            # 开始安装进度更新
-            self.update_progress(0, "[0 / 10] 准备安装...", "info")
+            # 开始进度更新
+            self.update_progress(0, f"[0 / 10] 准备{operation_name}...", "info")
 
-            # 执行实际安装
+            # 执行实际操作
             result = run_installation(args, self)
 
             if result["success"]:
-                # self.update_progress(100, "[10 / 10] 安装完成")
-                self.update_status("安装完成")
+                self.update_status(f"{operation_name}完成")
                 if self.completed_callback:
-                    self.completed_callback(True, "HugoAura 安装成功！")
+                    self.completed_callback(True, f"HugoAura {operation_name}成功！")
             else:
-                self.update_status("安装失败")
+                self.update_status(f"{operation_name}失败")
                 if self.completed_callback:
                     error_info = result.get("errorInfo", "未知错误")
                     if hasattr(error_info, '__str__'):
                         error_detail = str(error_info)
                     else:
-                        error_detail = "安装过程中发生未知错误"
+                        error_detail = f"{operation_name}过程中发生未知错误"
                     
                     # 根据错误类型提供更详细的错误信息
                     if "资源文件解压失败" in error_detail:
-                        error_message = f"安装失败: {error_detail}\n\n可能原因: \n- 下载的文件损坏\n- 磁盘空间不足\n- 临时目录权限问题"
+                        error_message = f"{operation_name}失败: {error_detail}\n\n可能原因: \n- 下载的文件损坏\n- 磁盘空间不足\n- 临时目录权限问题"
                     elif "文件结构不正确" in error_detail:
-                        error_message = f"安装失败: {error_detail}\n\n可能原因: \n- 下载的压缩包格式不正确\n- 文件在传输过程中损坏"
+                        error_message = f"{operation_name}失败: {error_detail}\n\n可能原因: \n- 下载的压缩包格式不正确\n- 文件在传输过程中损坏"
                     elif "移动文件夹" in error_detail:
-                        error_message = f"安装失败: {error_detail}\n\n可能原因: \n- 目标目录权限不足\n- 磁盘空间不足\n- 文件被其他程序占用"
+                        error_message = f"{operation_name}失败: {error_detail}\n\n可能原因: \n- 目标目录权限不足\n- 磁盘空间不足\n- 文件被其他程序占用"
                     elif "替换ASAR文件" in error_detail:
-                        error_message = f"安装失败: {error_detail}\n\n可能原因: \n- 希沃管家正在运行\n- 文件系统过滤驱动未正确卸载"
+                        error_message = f"{operation_name}失败: {error_detail}\n\n可能原因: \n- 希沃管家正在运行\n- 文件系统过滤驱动未正确卸载"
                     else:
-                        error_message = f"安装过程中发生错误: \n{error_detail}"
+                        error_message = f"{operation_name}过程中发生错误: \n{error_detail}"
                     
                     self.completed_callback(False, error_message)
 
         except Exception as e:
-            self.update_status("安装失败")
+            self.update_status(f"{operation_name}失败")
             if not self.is_installing:
-                self.update_progress(0, "[FAILED] 安装取消", "error")
-                self.update_status("安装已取消")
+                self.update_progress(0, f"[FAILED] {operation_name}取消", "error")
+                self.update_status(f"{operation_name}已取消")
             elif self.completed_callback:
-                self.completed_callback(False, f"安装失败: {str(e)}")
+                self.completed_callback(False, f"{operation_name}失败: {str(e)}")
         finally:
             self.is_installing = False
+            self.current_operation = None
 
     def _uninstall_worker(self):
         """卸载工作线程"""
@@ -236,17 +271,20 @@ class InstallerModel:
                 self.completed_callback(False, f"卸载失败: {str(e)}")
         finally:
             self.is_uninstalling = False
+            self.current_operation = None
 
     def cancel_install(self):
-        """取消安装"""
+        """取消安装 / 更新"""
         if self.is_installing:
             self.is_installing = False  # 设置 Flag
+            self.current_operation = None
             self.update_status("正在取消安装...")
 
     def cancel_uninstall(self):
         """取消卸载"""
         if self.is_uninstalling:
             self.is_uninstalling = False  # 设置 Flag
+            self.current_operation = None
             self.update_status("正在取消卸载...")
 
     def get_uninstall_info(self) -> Dict[str, Any]:
@@ -301,6 +339,22 @@ class InstallerModel:
 
         return args
 
+    def _build_update_args(self) -> argparse.Namespace:
+        """构建一键更新参数 (始终更新到最新稳定版, 自动检测安装目录)"""
+        args = argparse.Namespace()
+
+        args.yes = True
+        args.latest = True
+        args.pre = False
+        args.ci = False
+        args.version = None
+        args.path = None
+        args.dir = None
+        args.dry_run = False
+        args.operation_name = "更新"
+
+        return args
+
     def _build_uninstall_args(self) -> argparse.Namespace:
         """构建卸载参数"""
         args = argparse.Namespace()
@@ -316,6 +370,7 @@ class InstallerModel:
         return {
             "is_installing": self.is_installing,
             "is_uninstalling": self.is_uninstalling,
+            "current_operation": self.current_operation,
             "progress": self.install_progress,
             "status": self.install_status,
             "current_step": self.current_step,
@@ -329,3 +384,37 @@ class InstallerModel:
         except Exception as e:
             # 如果检查过程中出错, 默认返回False (未安装)
             return False
+
+    def get_update_available(self) -> Dict[str, Any]:
+        """检查已安装版本是否为最新稳定版"""
+        is_installed, install_info = check_hugoaura_installation()
+        if not is_installed:
+            return {
+                "installed": False,
+                "installed_version": None,
+                "latest_version": None,
+                "update_available": False,
+            }
+
+        installed_version = install_info.get("version")
+        latest_version = None
+        try:
+            latest = version_manager.get_latest_release()
+            if latest:
+                latest_version = latest.get("tag")
+        except Exception as e:
+            logger.warning(f"获取最新版本失败: {e}")
+
+        update_available = bool(
+            installed_version
+            and latest_version
+            and installed_version not in ("", "local")
+            and installed_version != latest_version
+        )
+
+        return {
+            "installed": True,
+            "installed_version": installed_version,
+            "latest_version": latest_version,
+            "update_available": update_available,
+        }
