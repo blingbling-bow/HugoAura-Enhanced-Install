@@ -6,7 +6,7 @@
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List
 
@@ -51,39 +51,55 @@ def process_releases(releases_data: List[Dict]) -> Dict:
     """
     releases = []
     prereleases = []
-    
+    ci_releases = []
+
     for release in releases_data:
         # 跳过草稿版本
         if release.get("draft", False):
             continue
-            
+
+        tag_name = release.get("tag_name") or ""
+        release_name = release.get("name") or ""
+
+        # CI 自动构建的 tag 形如 vAutoBuild-<commit短hash>, 或名称以 [CI] 开头
+        is_ci = tag_name.startswith("vAutoBuild") or release_name.startswith("[CI]")
+
+        if is_ci:
+            ci_releases.append(
+                {
+                    "tag": tag_name,
+                    "name": release_name or tag_name,
+                    "type": "ci",
+                    "published_at": release.get("published_at"),
+                    "download_url": get_download_url(release),
+                }
+            )
+            continue
+
         version_info = {
-            "tag": release["tag_name"],
-            "name": f"[{'Pre' if release['prerelease'] else 'Rel'}] {release['name'] or release['tag_name']}",
+            "tag": tag_name,
+            "name": f"[{'Pre' if release['prerelease'] else 'Rel'}] {release_name or tag_name}",
             "type": "prerelease" if release["prerelease"] else "release",
             "published_at": release.get("published_at"),
-            "download_url": get_download_url(release)
+            "download_url": get_download_url(release),
         }
-        
+
         if release["prerelease"]:
             prereleases.append(version_info)
         else:
             releases.append(version_info)
-    
-    # CI 构建版本 (固定)
-    ci_builds = [
-        {
-            "tag": "vAutoBuild",
-            "name": "[CI] HugoAura Auto Build Release",
-            "type": "ci"
-        }
-    ]
-    
+
+    # 从所有 CI 构建中选取最新构建 (按发布时间倒序)
+    ci_builds = []
+    if ci_releases:
+        ci_releases.sort(key=lambda r: r.get("published_at") or "", reverse=True)
+        ci_builds = [ci_releases[0]]
+
     return {
-        "last_updated": datetime.utcnow().isoformat() + "Z",
+        "last_updated": datetime.now(timezone.utc).isoformat() + "Z",
         "releases": releases,
         "prereleases": prereleases,
-        "ci_builds": ci_builds
+        "ci_builds": ci_builds,
     }
 
 

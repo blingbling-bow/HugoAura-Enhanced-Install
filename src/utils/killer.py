@@ -28,7 +28,7 @@ def _kill_loop():
                     )
                 else:
                     log.debug(
-                        f"尝试结束进程 {TARGET_PROCESS_NAME}。操作输出: {result.stdout.strip() or result.stderr.strip()}"
+                        f"尝试结束进程 {procName}。操作输出: {result.stdout.strip() or result.stderr.strip()}"
                     )
 
         except FileNotFoundError:

@@ -50,6 +50,8 @@ def _new_extract(self, dst: Path = None):  # type: ignore
     dst = dst if dst else Path.cwd()
     dst.mkdir(parents=True, exist_ok=True)
 
+    failed_paths = []
+
     for meta in self.metas:
         cur_dst = dst / meta.path
 
@@ -73,6 +75,10 @@ def _new_extract(self, dst: Path = None):  # type: ignore
                     and meta.file_path.exists()
                 ):
                     shutil.copy2(meta.file_path, cur_dst)
+                else:
+                    raise RuntimeError(
+                        f"文件 {meta.path} 的 unpacked 源文件不存在: {getattr(meta, 'file_path', None)}"
+                    )
             else:
                 if hasattr(meta, "file_reader") and meta.file_reader is not None:
                     try:
@@ -81,14 +87,28 @@ def _new_extract(self, dst: Path = None):  # type: ignore
                             shutil.copyfileobj(meta.file_reader, writer)
                     except AttributeError as e:
                         if "'NoneType' object has no attribute 'seek'" in str(e):
-                            log.warning(f"文件 {meta.path} 的 file_reader 无效，跳过")
-                        else:
-                            raise
+                            raise RuntimeError(
+                                f"文件 {meta.path} 的 file_reader 无效"
+                            ) from e
+                        # 其他 AttributeError 同样属于提取失败, 统一转成
+                        # RuntimeError 以便外层记录为 failed_paths。
+                        raise RuntimeError(
+                            f"文件 {meta.path} 提取失败: {e}"
+                        ) from e
                 else:
-                    log.warning(f"文件 {meta.path} 没有有效的 file_reader，无法提取")
+                    raise RuntimeError(
+                        f"文件 {meta.path} 没有有效的 file_reader，无法提取"
+                    )
 
         except Exception as e:
+            failed_paths.append((meta.path, e))
             log.error(f"提取文件 {meta.path} 时出错: {e}")
+
+    if failed_paths:
+        raise RuntimeError(
+            f"ASAR 解包失败, 共 {len(failed_paths)} 个文件提取错误。首个错误: "
+            f"{failed_paths[0][0]} -> {failed_paths[0][1]}"
+        )
 
 
 _original_parse_metadata = AsarArchive._parse_metadata

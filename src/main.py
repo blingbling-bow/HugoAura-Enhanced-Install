@@ -77,7 +77,7 @@ def main():
     log.info(f"EXEC: {sys.executable}")
     log.info(f"Arg: {sys.argv}")
 
-    has_version_args = args.version or args.path or args.pre or args.latest
+    has_version_args = args.version or args.path or args.pre or args.latest or args.ci
     is_double_click = len(sys.argv) == 1
     
     if not has_version_args and not is_double_click and not args.dry_run:

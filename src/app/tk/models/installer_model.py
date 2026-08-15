@@ -101,7 +101,7 @@ class InstallerModel:
 
     def start_install(self):
         """开始安装"""
-        if self.is_installing or self.is_uninstalling:
+        if self.current_operation is not None:
             return False, "任务正在进行中"
 
         valid, message = self.validate_install_options()
@@ -113,7 +113,9 @@ class InstallerModel:
         self.install_progress = 0
         self.update_status("正在安装...")
 
-        self.install_thread = threading.Thread(target=self._install_worker)
+        self.install_thread = threading.Thread(
+            target=self._install_worker, kwargs={"is_update": False}
+        )
         self.install_thread.daemon = True
         self.install_thread.start()
 
@@ -121,7 +123,7 @@ class InstallerModel:
 
     def start_update(self):
         """一键更新到最新稳定版"""
-        if self.is_installing or self.is_uninstalling:
+        if self.current_operation is not None:
             return False, "任务正在进行中"
 
         is_installed, _ = check_hugoaura_installation()
@@ -143,7 +145,7 @@ class InstallerModel:
 
     def start_uninstall(self):
         """开始卸载"""
-        if self.is_installing or self.is_uninstalling:
+        if self.current_operation is not None:
             return False, "操作正在进行中"
 
         self.is_uninstalling = True
@@ -274,17 +276,20 @@ class InstallerModel:
             self.current_operation = None
 
     def cancel_install(self):
-        """取消安装 / 更新"""
+        """取消安装 / 更新
+
+        只清除后端活跃标志, 让 worker 抛出取消异常并快速退出。
+        current_operation 由 worker 的 finally 统一清理, 避免旧线程
+        覆盖新启动操作的状态。
+        """
         if self.is_installing:
-            self.is_installing = False  # 设置 Flag
-            self.current_operation = None
+            self.is_installing = False
             self.update_status("正在取消安装...")
 
     def cancel_uninstall(self):
         """取消卸载"""
         if self.is_uninstalling:
-            self.is_uninstalling = False  # 设置 Flag
-            self.current_operation = None
+            self.is_uninstalling = False
             self.update_status("正在取消卸载...")
 
     def get_uninstall_info(self) -> Dict[str, Any]:

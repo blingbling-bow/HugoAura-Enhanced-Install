@@ -27,14 +27,10 @@ def run_as_admin():
     try:
         log.info("尝试使用管理员权限重启...")
         script = os.path.abspath(sys.executable)
-        
-        # 构建命令行参数, 确保正确传递所有参数
-        if len(sys.argv) > 1:
-            # 如果有命令行参数, 拼接所有参数
-            params = " ".join([f'"{arg}"' for arg in sys.argv])
-        else:
-            # 如果没有命令行参数, 只传递脚本路径
-            params = f'"{sys.argv[0]}"'
+
+        # 仅传递命令行参数, 排除 argv[0] (exe 自身路径)。
+        # ShellExecuteW 的第三个参数 script 就是新进程的 argv[0]。
+        params = " ".join([f'"{arg}"' for arg in sys.argv[1:]]) or None
 
         ret = ctypes.windll.shell32.ShellExecuteW(
             None,

@@ -162,6 +162,8 @@ def run_installation(args, installerClassIns=None):
     downloaded_aura_zip_path = None
     downloaded_core_zip_path = None
     download_source = None
+    is_download_src_from_local = False
+    dl_callback_name = None
     ssa_asar = config.TARGET_ASAR_NAME
     if_patch = True
 
@@ -226,7 +228,7 @@ def run_installation(args, installerClassIns=None):
             log.info(f"已选择版本 Tag: {download_source}")
 
         update_progress(30, "[3 / 10] 获取资源文件")
-        dlCallbackFuncName = (
+        dl_callback_name = (
             lifecycleTypes.GLOBAL_CALLBACKS.REPORT_DOWNLOAD_PROGRESS.value
         )
         if is_download_src_from_local:
@@ -245,7 +247,7 @@ def run_installation(args, installerClassIns=None):
                 raise InstallError("无效的路径, 请检查路径输入", exit_code=7)
         else:
             update_progress(32, "[3 / 10] 正在下载资源文件")
-            lifecycleMgr.callbacks[dlCallbackFuncName] = rep_dl_progress
+            lifecycleMgr.callbacks[dl_callback_name] = rep_dl_progress
             downloaded_core_zip_path, downloaded_aura_zip_path = (
                 fileDownloader.download_release_files(download_source)
             )
@@ -253,7 +255,7 @@ def run_installation(args, installerClassIns=None):
             log.critical("资源文件下载失败, 即将结束安装")
             raise InstallError("资源文件下载失败, 请检查网络连接及日志信息", exit_code=4)
 
-        lifecycleMgr.callbacks[dlCallbackFuncName] = None
+        lifecycleMgr.callbacks[dl_callback_name] = None
 
         update_progress(40, "[4 / 10] 解压资源文件")
         temp_extract_path = Path(config.TEMP_INSTALL_DIR) / "aura"
@@ -457,11 +459,7 @@ def run_installation(args, installerClassIns=None):
                         "Version",
                         0,
                         winreg.REG_SZ,
-                        (
-                            download_source
-                            if isinstance(download_source, str)
-                            else "local"
-                        ),
+                        "local" if is_download_src_from_local else download_source,
                     )
                     winreg.SetValueEx(
                         key, "InstallTime", 0, winreg.REG_SZ, datetime.now().isoformat()
@@ -483,6 +481,10 @@ def run_installation(args, installerClassIns=None):
         exit_code = 1
         install_success = False
     finally:
+        # 无论成功/失败, 清空全局下载进度回调
+        if dl_callback_name:
+            lifecycleMgr.callbacks[dl_callback_name] = None
+
         update_progress(
             100,
             f"[10 / 10] 安装{"完成" if install_success else f"出错: {error_detail}"}",

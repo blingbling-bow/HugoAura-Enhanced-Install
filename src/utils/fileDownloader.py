@@ -1,3 +1,4 @@
+import hashlib
 import ipaddress
 import socket
 import requests
@@ -13,16 +14,54 @@ from config.config import (
     AURA_FILENAME,
     CORE_FILENAME,
     TEMP_INSTALL_DIR,
+    GITHUB_API_URL,
 )
 import typeDefs.lifecycle
 import lifecycle as lifecycleMgr
 import asyncio
 import aiohttp
-import time
 from typing import List, Tuple
 
 
 desiredTag = None
+
+
+def _compute_sha256(path: Path) -> str:
+    """计算文件 SHA256 十六进制摘要"""
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def fetch_release_asset_digests(tag_name: str) -> dict:
+    """获取指定 release 资源的 SHA256 摘要。
+
+    GitHub release asset API 返回 digest 字段 (格式 sha256:<hex>)。
+    这是 best-effort: 失败或字段缺失时返回空字典, 不阻断安装, 仅跳过校验。
+    """
+    url = f"{GITHUB_API_URL}/tags/{tag_name}"
+    if not _is_safe_url(url):
+        log.warning(f"跳过 GitHub API 摘要获取 (非法 URL): {url}")
+        return {}
+
+    headers = {"User-Agent": "HugoAura-Install", "Accept": "application/vnd.github+json"}
+    try:
+        resp = requests.get(url, timeout=30, headers=headers)
+        resp.raise_for_status()
+        release = resp.json()
+    except Exception as e:
+        log.warning(f"获取 release 资源摘要失败, 跳过 SHA256 校验: {e}")
+        return {}
+
+    digests = {}
+    for asset in release.get("assets", []):
+        name = asset.get("name")
+        digest = asset.get("digest") or ""
+        if name and digest.startswith("sha256:"):
+            digests[name] = digest[len("sha256:"):]
+    return digests
 
 
 def _is_safe_url(url: str) -> bool:
@@ -61,7 +100,12 @@ def _is_safe_url(url: str) -> bool:
     return True
 
 
-def download_file(url: str, dest_folder: str, filename: str) -> Path | str | None:
+def download_file(
+    url: str,
+    dest_folder: str,
+    filename: str,
+    expected_sha256: str | None = None,
+) -> Path | str | None:
     dest_path = Path(dest_folder) / filename
     log.info(f"正在从 {url} 下载 {filename}, 目标目录: {dest_path}")
 
@@ -111,6 +155,19 @@ def download_file(url: str, dest_folder: str, filename: str) -> Path | str | Non
             if dest_path.exists():
                 os.remove(dest_path)
             return None
+
+        # 内容完整性校验: 若提供了权威摘要, 对比下载文件的实际 SHA256
+        if expected_sha256:
+            actual_sha256 = _compute_sha256(dest_path)
+            if actual_sha256.lower() != expected_sha256.lower():
+                log.error(
+                    f"文件 {filename} SHA256 校验失败: 预期 {expected_sha256}, 实际 {actual_sha256}"
+                )
+                if dest_path.exists():
+                    os.remove(dest_path)
+                return None
+            log.success(f"文件 {filename} SHA256 校验通过")
+
         return dest_path
     except requests.exceptions.RequestException as e:
         log.error(f"下载文件 {filename} 时发生网络错误: {e}")
@@ -177,7 +234,10 @@ async def benchmark_download_sources(tag_name: str) -> List[str]:
 
 
 def download_file_multi_sources(
-    filename: str, dest_folder: str, use_speed_optimization: bool = True
+    filename: str,
+    dest_folder: str,
+    use_speed_optimization: bool = True,
+    expected_sha256: str | None = None,
 ) -> Path | None:
     """
     尝试从多个下载源下载文件
@@ -203,7 +263,7 @@ def download_file_multi_sources(
 
     for base_url in download_urls:
         url = f"{base_url}/{desiredTag}/{filename}"
-        result = download_file(url, dest_folder, filename)
+        result = download_file(url, dest_folder, filename, expected_sha256=expected_sha256)
         if result == "DL_CANCEL":
             log.warning("下载已取消")
             return None
@@ -253,12 +313,29 @@ def download_release_files(tagName) -> tuple[Path | None, Path | None]:
         )
         return None, None
 
-    downloaded_core_path = download_file_multi_sources(CORE_FILENAME, str(temp_dir))
+    downloaded_core_path = None
+    downloaded_zip_path = None
+
+    # 获取权威 SHA256 摘要; 失败时为空字典, 走原有仅字节数校验逻辑
+    digests = fetch_release_asset_digests(tagName)
+    core_sha = digests.get(CORE_FILENAME)
+    aura_sha = digests.get(AURA_FILENAME)
+
+    if core_sha and aura_sha:
+        log.info("已获取资源 SHA256 摘要, 下载后启用内容校验")
+    else:
+        log.warning("未获取到资源 SHA256 摘要, 下载后仅校验字节数")
+
+    downloaded_core_path = download_file_multi_sources(
+        CORE_FILENAME, str(temp_dir), expected_sha256=core_sha
+    )
     if not downloaded_core_path:
         log.critical("下载 core.zip 时发生错误, 安装进程终止。")
         return None, None
 
-    downloaded_zip_path = download_file_multi_sources(AURA_FILENAME, str(temp_dir))
+    downloaded_zip_path = download_file_multi_sources(
+        AURA_FILENAME, str(temp_dir), expected_sha256=aura_sha
+    )
     if not downloaded_zip_path:
         log.critical("下载 aura.zip 时发生错误, 安装进程终止。")
         return downloaded_core_path, None
