@@ -5,4 +5,5 @@ asar==0.1.2
 ttkbootstrap==1.10.1
 pillow==10.4.0
 aiohttp==3.9.5
-pyinstaller==6.14.1
+# PyInstaller 6 dropped Windows 7 support; 5.13.2 is the last compatible line.
+pyinstaller==5.13.2
