@@ -1,12 +1,10 @@
 import sys
 from pathlib import Path
-import ttkbootstrap
+from PyInstaller.utils.hooks import collect_data_files
 
 # 获取项目根目录
 project_root = Path.cwd()
 src_dir = project_root / 'src'
-ttkbootstrap_dir = Path(ttkbootstrap.__file__).parent
-
 block_cipher = None
 
 # 定义数据文件
@@ -14,8 +12,11 @@ datas = [
     (str(src_dir / 'app' / 'public' / 'installer.ico'), 'app/public'),
     (str(src_dir / 'app' / 'public' / 'versions.json'), 'app/public'),
     (str(src_dir / 'config'), 'config'),
-    (str(ttkbootstrap_dir / 'assets'), 'ttkbootstrap/assets'),
 ]
+
+# ttkbootstrap 的资源目录随版本变化，使用 PyInstaller 的官方钩子自动收集
+# 包内实际存在的数据文件，避免固定引用不存在的 assets 目录导致构建失败。
+datas.extend(collect_data_files('ttkbootstrap'))
 
 # 定义隐藏导入的模块
 hiddenimports = [
