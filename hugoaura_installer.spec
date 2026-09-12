@@ -63,7 +63,9 @@ hiddenimports = [
     
     # 项目模块
     'main',
-    'install_manager',
+    'aura_installer_runtime',
+    'aura_installer_runtime.install_manager',
+    'aura_installer_runtime.uninstall_manager',
     'uninstaller',
     'lifecycle',
     'version',
