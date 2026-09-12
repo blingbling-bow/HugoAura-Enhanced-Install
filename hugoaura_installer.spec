@@ -86,7 +86,7 @@ hiddenimports.extend(runtime_hiddenimports)
 
 # 分析阶段
 a = Analysis(
-    [str(src_dir / 'app.py')],  # 主程序入口
+    [str(src_dir / 'launcher.py')],  # 主程序入口
     pathex=[str(src_dir)],      # Python路径
     binaries=binaries,
     datas=datas,
