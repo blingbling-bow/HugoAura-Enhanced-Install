@@ -2,6 +2,8 @@
 安装器模型 - 封装 HugoAura 安装相关的业务逻辑
 """
 
+from __future__ import annotations
+
 import os
 import threading
 from typing import Callable, Optional, Dict, Any

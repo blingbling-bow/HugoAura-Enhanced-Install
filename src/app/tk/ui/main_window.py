@@ -2,6 +2,8 @@
 主窗口 UI
 """
 
+from __future__ import annotations
+
 from logging import WARN
 from version import __appVer__
 import tkinter as tk
@@ -63,7 +65,7 @@ class MainWindow:
 
         # 初始大小, 允许后续根据内容和屏幕大小自动调整
         self.root.geometry(
-            f"{int(self.geometry_info["BASELINE_WIDTH"] * self.geometry_info["scaleFactor"])}x{int(self.geometry_info["BASELINE_HEIGHT"] * self.geometry_info["scaleFactor"])}"
+            f"{int(self.geometry_info['BASELINE_WIDTH'] * self.geometry_info['scaleFactor'])}x{int(self.geometry_info['BASELINE_HEIGHT'] * self.geometry_info['scaleFactor'])}"
         )
         self.root.tk.call("tk", "scaling", self.geometry_info["scaleFactor"] * 100 / 75)
         # 允许窗口缩放和最大化, 方便在小分辨率/高 DPI 下查看完整内容
@@ -1237,17 +1239,16 @@ Install 主仓库: blingbling-bow/HugoAura-Install"""
         if step:
             self.step_var.set(step)
         if status:
-            match status:
-                case "success":
-                    self.progress_bar.config(bootstyle="SUCCESS-striped")
-                case "info":
-                    self.progress_bar.config(bootstyle="INFO-striped")
-                case "error":
-                    self.progress_bar.config(bootstyle="DANGER-striped")
-                case "warn":
-                    self.progress_bar.config(bootstyle="WARNING-striped")
-                case _:
-                    pass
+            # 使用 if/elif 代替 match 语句, 兼容 Python 3.8 构建
+            status_styles = {
+                "success": "SUCCESS-striped",
+                "info": "INFO-striped",
+                "error": "DANGER-striped",
+                "warn": "WARNING-striped",
+            }
+            style = status_styles.get(status)
+            if style:
+                self.progress_bar.config(bootstyle=style)
         self.root.update_idletasks()
 
     def update_status(self, status: str):

@@ -129,7 +129,7 @@ def select_release_source(args=None):
     if ci:
         latest_ci = ci[0]
         print("--- 自动构建版 ---")
-        print(f"[{len(options)+1}] {latest_ci["tag_name"]} {latest_ci["name"]}")
+        print(f"[{len(options)+1}] {latest_ci['tag_name']} {latest_ci['name']}")
         options.append(latest_ci["tag_name"])
 
     print("--- 或选择手动输入 ---")
@@ -487,7 +487,7 @@ def run_installation(args, installerClassIns=None):
 
         update_progress(
             100,
-            f"[10 / 10] 安装{"完成" if install_success else f"出错: {error_detail}"}",
+            f"[10 / 10] 安装{'完成' if install_success else f'出错: {error_detail}'}",
             "success" if install_success else "error",
         )
 
