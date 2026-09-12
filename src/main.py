@@ -5,7 +5,7 @@ import argparse
 from loguru import logger as log
 from utils import uac
 from version import __appVer__
-import aura_installer_runtime.install_manager as install_manager
+from app import install_manager
 from config import config
 
 

@@ -9,8 +9,8 @@ import argparse
 
 from loguru import logger
 
-from aura_installer_runtime.install_manager import run_installation
-from aura_installer_runtime.uninstall_manager import (
+from app.install_manager import run_installation
+from app.uninstall_manager import (
     run_uninstallation,
     get_uninstall_info,
     check_hugoaura_installation,

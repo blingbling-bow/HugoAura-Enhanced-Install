@@ -63,10 +63,8 @@ hiddenimports = [
     
     # 项目模块
     'main',
-    'aura_installer_runtime',
-    'aura_installer_runtime.install_manager',
-    'aura_installer_runtime.uninstall_manager',
-    'uninstaller',
+    'app.install_manager',
+    'app.uninstall_manager',
     'lifecycle',
     'version',
     'typeDefs.lifecycle',
@@ -81,9 +79,7 @@ hiddenimports = [
     'config.config',
 ]
 
-runtime_datas, runtime_binaries, runtime_hiddenimports = collect_all(
-    'aura_installer_runtime'
-)
+runtime_datas, runtime_binaries, runtime_hiddenimports = collect_all('app')
 datas.extend(runtime_datas)
 binaries = runtime_binaries
 hiddenimports.extend(runtime_hiddenimports)
