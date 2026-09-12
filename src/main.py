@@ -2,10 +2,11 @@ import sys
 import os
 import time
 import argparse
+import importlib
 from loguru import logger as log
 from utils import uac
 from version import __appVer__
-from app import install_manager
+install_manager = importlib.import_module("app.install_manager")
 from config import config
 
 

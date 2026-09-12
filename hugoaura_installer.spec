@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_all, collect_data_files
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
 
 # 获取项目根目录
 project_root = Path.cwd()
@@ -83,6 +83,7 @@ runtime_datas, runtime_binaries, runtime_hiddenimports = collect_all('app')
 datas.extend(runtime_datas)
 binaries = runtime_binaries
 hiddenimports.extend(runtime_hiddenimports)
+hiddenimports.extend(collect_submodules('app'))
 
 # 分析阶段
 a = Analysis(
