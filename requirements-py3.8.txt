@@ -1,0 +1,8 @@
+# Dependencies for the Windows 7-compatible Python 3.8 build.
+loguru==0.7.3
+requests==2.32.4
+asar==0.1.2
+ttkbootstrap==1.10.1
+pillow==10.4.0
+aiohttp==3.9.5
+pyinstaller==6.14.1

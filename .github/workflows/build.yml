@@ -34,7 +34,38 @@ jobs:
         shell: powershell
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: AuraInstaller
           path: dist/AuraInstaller.exe
+
+  # Python 3.8 is the last Python version supported by Windows 7.
+  # This job uses a separate requirements file because the main project
+  # intentionally targets Python 3.13.
+  build-py3-8:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.8"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-py3.8.txt
+
+      - name: Build project
+        run: .\scripts\build.bat
+        shell: cmd
+
+      - name: Rename compatibility artifact
+        shell: powershell
+        run: Rename-Item -LiteralPath dist/AuraInstaller.exe -NewName AuraInstaller-py3-8.exe
+
+      - name: Upload Python 3.8 artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: AuraInstaller-py3-8
+          path: dist/AuraInstaller-py3-8.exe
