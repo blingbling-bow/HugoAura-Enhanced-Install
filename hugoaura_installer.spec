@@ -62,6 +62,12 @@ hiddenimports = [
     'pathlib',
     
     # 项目模块
+    'main',
+    'installer',
+    'uninstaller',
+    'lifecycle',
+    'version',
+    'typeDefs.lifecycle',
     'app.tk.controller.main_controller',
     'app.tk.ui.main_window',
     'app.tk.models.installer_model',
@@ -71,8 +77,6 @@ hiddenimports = [
     'utils.fileDownloader',
     'utils.killer',
     'config.config',
-    'installer',
-    'uninstaller',
 ]
 
 # 分析阶段

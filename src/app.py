@@ -8,11 +8,12 @@ import ctypes
 from pathlib import Path
 from loguru import logger
 
-import main as cliEntryMain
-
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
+
+# 在路径初始化后导入 CLI 入口，确保源码和 PyInstaller 环境都能解析顶层模块。
+import main as cliEntryMain
 
 # 在PyInstaller环境中, 需要特殊处理导入
 try:
@@ -122,4 +123,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    main()
