@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_data_files
 
 # 获取项目根目录
 project_root = Path.cwd()
@@ -81,13 +81,18 @@ hiddenimports = [
     'config.config',
 ]
 
-hiddenimports.extend(collect_submodules('aura_installer_runtime'))
+runtime_datas, runtime_binaries, runtime_hiddenimports = collect_all(
+    'aura_installer_runtime'
+)
+datas.extend(runtime_datas)
+binaries = runtime_binaries
+hiddenimports.extend(runtime_hiddenimports)
 
 # 分析阶段
 a = Analysis(
     [str(src_dir / 'app.py')],  # 主程序入口
     pathex=[str(src_dir)],      # Python路径
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[str(project_root / 'hooks')],  # 添加自定义钩子路径
