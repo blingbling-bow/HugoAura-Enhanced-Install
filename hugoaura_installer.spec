@@ -63,7 +63,7 @@ hiddenimports = [
     
     # 项目模块
     'main',
-    'installer',
+    'install_manager',
     'uninstaller',
     'lifecycle',
     'version',

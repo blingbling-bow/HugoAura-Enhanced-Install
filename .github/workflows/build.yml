@@ -34,7 +34,7 @@ jobs:
         shell: powershell
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: AuraInstaller
           path: dist/AuraInstaller.exe
@@ -65,7 +65,7 @@ jobs:
         run: Rename-Item -LiteralPath dist/AuraInstaller.exe -NewName AuraInstaller-py3-8.exe
 
       - name: Upload Python 3.8 artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: AuraInstaller-py3-8
           path: dist/AuraInstaller-py3-8.exe

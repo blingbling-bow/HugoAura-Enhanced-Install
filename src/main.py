@@ -5,7 +5,7 @@ import argparse
 from loguru import logger as log
 from utils import uac
 from version import __appVer__
-import installer
+import install_manager
 from config import config
 
 
@@ -95,7 +95,7 @@ def main():
         log.info("管理工具正以管理员权限运行, 即将启动安装流程...")
         result = {"success": False, "errorInfo": "", "exit_code": 1}
         try:
-            result = installer.run_installation(args)
+            result = install_manager.run_installation(args)
         except Exception as e:
             log.exception(f"执行安装流程时发生意外错误: {e}")
             result = {"success": False, "errorInfo": str(e), "exit_code": 1}

@@ -9,7 +9,7 @@ import argparse
 
 from loguru import logger
 
-from installer import run_installation
+from install_manager import run_installation
 from uninstaller import run_uninstallation, get_uninstall_info, check_hugoaura_installation
 from utils.version_manager import version_manager
 
