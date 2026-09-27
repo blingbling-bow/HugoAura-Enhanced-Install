@@ -18,25 +18,23 @@ TARGET_ASAR_NAME = "app.asar"
 EXTRACTED_FOLDER_NAME = "aura"
 
 # 下载 URL 列表
+# 已于 2026-09 用真实 release 资产 (aura.zip) 两轮实测筛选:
+# 剔除失效源 (gh.llkk.cc 超时 / github.dpik.top 失效 / ghfast.top 限速严重
+# / gh.acmsz.top 403 / cfgh.ikgy.top 403 / gh.ddlc.top 429 / github.geekery.cn 极慢),
+# 并补充新可用源; 顺序仅作测速失败时的回退顺序, 正常使用前会自动测速排序
 BASE_DOWNLOAD_URLS = [
     f"https://git.yylx.win/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://cfgh.ikgy.top/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://gh.927223.xyz/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://github.tbap.top/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://ghproxy.felicity.land/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://github.chenc.dev/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
     f"https://gh.07150721.xyz/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://ghf.xn--eqrr82bzpe.top/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://gh.dpik.top/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://gh-proxy.org/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://axisnow.gh-proxy.org/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
     f"https://cdn.gh-proxy.org/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://v4.gh-proxy.org/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://v6.gh-proxy.org/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://gh.llkk.cc/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://github.dpik.top/github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://ghfast.top/github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://ghproxy.net/github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://axisnow.gh-proxy.org/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://gh-proxy.org/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://githubdog.com/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://js.jiangss.shop/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://gh.927223.xyz/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://ghproxy.felicity.land/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://github.tbap.top/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",  # 直连兜底
 ]
 
 # GitHub API URL

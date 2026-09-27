@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import hashlib
 import ipaddress
 import socket
@@ -64,11 +66,22 @@ def fetch_release_asset_digests(tag_name: str) -> dict:
     return digests
 
 
+# 代理软件 (Clash/Mihomo 等) TUN+Fake-IP 模式的 DNS 虚拟地址段,
+# 对应 RFC 2544 / RFC 4038 的基准测试保留段。此类地址不可公网路由,
+# 请求会经本机代理栈转发, 不构成 SSRF 风险; 而访问 GitHub 普遍依赖
+# 该模式, 因此解析到这些段时放行, 其余内网/保留段照旧拒绝。
+_FAKE_IP_NETWORKS = (
+    ipaddress.ip_network("198.18.0.0/15"),
+    ipaddress.ip_network("2001:2::/48"),
+)
+
+
 def _is_safe_url(url: str) -> bool:
     """校验下载 URL, 仅允许 http/https 且所有解析结果均为公网地址。
 
-    采用“任一地址不安全即拒绝”的严格策略, 防止 DNS rebinding:
+    采用"任一地址不安全即拒绝"的严格策略, 防止 DNS rebinding:
     若某个域名同时解析出公网和内网地址, 应视为不可信, 而不是放行。
+    代理 Fake-IP 段除外 (见 _FAKE_IP_NETWORKS)。
     """
     try:
         parsed = urlparse(url)
@@ -85,6 +98,9 @@ def _is_safe_url(url: str) -> bool:
     try:
         for info in socket.getaddrinfo(host, None):
             ip = ipaddress.ip_address(info[4][0])
+            if any(ip in net for net in _FAKE_IP_NETWORKS):
+                log.info(f"DNS 解析到代理 Fake-IP 地址 ({ip}), 放行下载")
+                continue
             if (
                 ip.is_loopback
                 or ip.is_private

@@ -8,11 +8,12 @@ import ctypes
 from pathlib import Path
 from loguru import logger
 
-import main as cliEntryMain
-
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
+
+# 在路径初始化后导入 CLI 入口，确保源码和 PyInstaller 环境都能解析顶层模块。
+import main as cliEntryMain
 
 # 在PyInstaller环境中, 需要特殊处理导入
 try:
@@ -85,6 +86,36 @@ def show_error_dialog(message):
             print(f"错误: {message}")
 
 
+def ensure_cli_console():
+    """--cli 交互模式下分配控制台窗口。
+
+    PyInstaller 以 console=False (GUI 子系统) 打包时, 进程没有 stdin/stdout,
+    交互式 CLI 调用 input() 会直接抛 RuntimeError: lost sys.stdin。
+    此处在进入 CLI 交互流程前分配一个控制台并接管标准流。
+    """
+    if "--cli" not in sys.argv:
+        return
+    # 静默模式 (-y) 全程不读 stdin, 保持无窗口, 行为与既有自动化用法一致
+    if "-y" in sys.argv or "--yes" in sys.argv:
+        return
+    if sys.stdin is not None and sys.stdout is not None:
+        return  # 源码运行或已附加控制台, 无需处理
+
+    try:
+        kernel32 = ctypes.windll.kernel32
+        if not kernel32.AllocConsole():
+            # 进程可能残留无效的控制台关联导致 AllocConsole 报错 6,
+            # 释放后重试一次
+            kernel32.FreeConsole()
+            if not kernel32.AllocConsole():
+                return  # 分配失败时退化为日志文件, 交互输入将不可用
+        sys.stdin = open("CONIN$", "r")
+        sys.stdout = open("CONOUT$", "w", buffering=1)
+        sys.stderr = open("CONOUT$", "w", buffering=1)
+    except Exception:
+        pass
+
+
 def main():
     """应用程序入口"""
     try:
@@ -94,7 +125,10 @@ def main():
             print("正在请求管理员权限...")
             if not run_as_admin():
                 sys.exit(0)  # 已启动新的管理员进程, 退出当前进程
-        
+
+        # CLI 交互模式需要控制台窗口, 须在初始化日志前完成
+        ensure_cli_console()
+
         # 初始化日志系统
         try:
             setup_logger()
@@ -122,4 +156,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    main()

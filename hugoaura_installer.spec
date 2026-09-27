@@ -1,12 +1,10 @@
 import sys
 from pathlib import Path
-import ttkbootstrap
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
 
 # 获取项目根目录
 project_root = Path.cwd()
 src_dir = project_root / 'src'
-ttkbootstrap_dir = Path(ttkbootstrap.__file__).parent
-
 block_cipher = None
 
 # 定义数据文件
@@ -14,8 +12,11 @@ datas = [
     (str(src_dir / 'app' / 'public' / 'installer.ico'), 'app/public'),
     (str(src_dir / 'app' / 'public' / 'versions.json'), 'app/public'),
     (str(src_dir / 'config'), 'config'),
-    (str(ttkbootstrap_dir / 'assets'), 'ttkbootstrap/assets'),
 ]
+
+# ttkbootstrap 的资源目录随版本变化，使用 PyInstaller 的官方钩子自动收集
+# 包内实际存在的数据文件，避免固定引用不存在的 assets 目录导致构建失败。
+datas.extend(collect_data_files('ttkbootstrap'))
 
 # 定义隐藏导入的模块
 hiddenimports = [
@@ -61,6 +62,12 @@ hiddenimports = [
     'pathlib',
     
     # 项目模块
+    'main',
+    'app.install_manager',
+    'app.uninstall_manager',
+    'lifecycle',
+    'version',
+    'typeDefs.lifecycle',
     'app.tk.controller.main_controller',
     'app.tk.ui.main_window',
     'app.tk.models.installer_model',
@@ -70,15 +77,19 @@ hiddenimports = [
     'utils.fileDownloader',
     'utils.killer',
     'config.config',
-    'installer',
-    'uninstaller',
 ]
+
+runtime_datas, runtime_binaries, runtime_hiddenimports = collect_all('app')
+datas.extend(runtime_datas)
+binaries = runtime_binaries
+hiddenimports.extend(runtime_hiddenimports)
+hiddenimports.extend(collect_submodules('app'))
 
 # 分析阶段
 a = Analysis(
-    [str(src_dir / 'app.py')],  # 主程序入口
+    [str(src_dir / 'launcher.py')],  # 主程序入口
     pathex=[str(src_dir)],      # Python路径
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[str(project_root / 'hooks')],  # 添加自定义钩子路径

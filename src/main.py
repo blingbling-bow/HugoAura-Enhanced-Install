@@ -2,10 +2,11 @@ import sys
 import os
 import time
 import argparse
+import importlib
 from loguru import logger as log
 from utils import uac
 from version import __appVer__
-import installer
+install_manager = importlib.import_module("app.install_manager")
 from config import config
 
 
@@ -79,8 +80,9 @@ def main():
 
     has_version_args = args.version or args.path or args.pre or args.latest or args.ci
     is_double_click = len(sys.argv) == 1
-    
-    if not has_version_args and not is_double_click and not args.dry_run:
+
+    # --cli 单独使用时不自动指定版本, 让 select_release_source 进入交互菜单
+    if not has_version_args and not is_double_click and not args.dry_run and not args.cli:
         args.latest = True
 
     if not uac.is_admin():
@@ -95,7 +97,7 @@ def main():
         log.info("管理工具正以管理员权限运行, 即将启动安装流程...")
         result = {"success": False, "errorInfo": "", "exit_code": 1}
         try:
-            result = installer.run_installation(args)
+            result = install_manager.run_installation(args)
         except Exception as e:
             log.exception(f"执行安装流程时发生意外错误: {e}")
             result = {"success": False, "errorInfo": str(e), "exit_code": 1}

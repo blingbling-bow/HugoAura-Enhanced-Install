@@ -2,6 +2,8 @@
 主窗口 UI
 """
 
+from __future__ import annotations
+
 from logging import WARN
 from version import __appVer__
 import tkinter as tk
@@ -44,6 +46,45 @@ def _enable_high_dpi_awareness():
         pass
 
 
+def _get_dpi_scale_factor():
+    """
+    获取系统 DPI 缩放比例 (1.0 表示 100%)。
+
+    依次尝试 shcore (Windows 8.1+)、user32.GetDpiForSystem (Windows 10 1607+)
+    与 GDI GetDeviceCaps (Windows 7 兼容) 接口; 全部不可用时回退为 1.0。
+    这样可避免在缺少 shcore.dll 的系统 (如 Windows 7) 上启动失败。
+    """
+    if os.name != "nt":
+        return 1.0
+
+    # shcore 接口 (Windows 8.1+), 返回 DPI 值 (96 为 100%)
+    try:
+        return ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100
+    except Exception:
+        pass
+
+    # user32 接口 (Windows 10 1607+)
+    try:
+        return ctypes.windll.user32.GetDpiForSystem() / 96
+    except Exception:
+        pass
+
+    # GDI 回退方案 (Windows 7 及以上均可用)
+    try:
+        hdc = ctypes.windll.user32.GetDC(0)
+        if hdc:
+            try:
+                LOGPIXELSX = 88
+                return ctypes.windll.gdi32.GetDeviceCaps(hdc, LOGPIXELSX) / 96
+            finally:
+                ctypes.windll.user32.ReleaseDC(0, hdc)
+    except Exception:
+        pass
+
+    # 最终回退: 按 100% 处理
+    return 1.0
+
+
 class MainWindow:
     """主窗口UI类"""
 
@@ -58,12 +99,12 @@ class MainWindow:
         self.geometry_info = {
             "BASELINE_HEIGHT": 400,  # 增加基准高度以确保内容完整显示
             "BASELINE_WIDTH": 400,   # 增加基准宽度以提供更好的显示效果
-            "scaleFactor": ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100
+            "scaleFactor": _get_dpi_scale_factor()
         }
 
         # 初始大小, 允许后续根据内容和屏幕大小自动调整
         self.root.geometry(
-            f"{int(self.geometry_info["BASELINE_WIDTH"] * self.geometry_info["scaleFactor"])}x{int(self.geometry_info["BASELINE_HEIGHT"] * self.geometry_info["scaleFactor"])}"
+            f"{int(self.geometry_info['BASELINE_WIDTH'] * self.geometry_info['scaleFactor'])}x{int(self.geometry_info['BASELINE_HEIGHT'] * self.geometry_info['scaleFactor'])}"
         )
         self.root.tk.call("tk", "scaling", self.geometry_info["scaleFactor"] * 100 / 75)
         # 允许窗口缩放和最大化, 方便在小分辨率/高 DPI 下查看完整内容
@@ -1237,17 +1278,16 @@ Install 主仓库: blingbling-bow/HugoAura-Install"""
         if step:
             self.step_var.set(step)
         if status:
-            match status:
-                case "success":
-                    self.progress_bar.config(bootstyle="SUCCESS-striped")
-                case "info":
-                    self.progress_bar.config(bootstyle="INFO-striped")
-                case "error":
-                    self.progress_bar.config(bootstyle="DANGER-striped")
-                case "warn":
-                    self.progress_bar.config(bootstyle="WARNING-striped")
-                case _:
-                    pass
+            # 使用 if/elif 代替 match 语句, 兼容 Python 3.8 构建
+            status_styles = {
+                "success": "SUCCESS-striped",
+                "info": "INFO-striped",
+                "error": "DANGER-striped",
+                "warn": "WARNING-striped",
+            }
+            style = status_styles.get(status)
+            if style:
+                self.progress_bar.config(bootstyle=style)
         self.root.update_idletasks()
 
     def update_status(self, status: str):

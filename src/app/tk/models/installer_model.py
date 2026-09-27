@@ -2,6 +2,8 @@
 安装器模型 - 封装 HugoAura 安装相关的业务逻辑
 """
 
+from __future__ import annotations
+
 import os
 import threading
 from typing import Callable, Optional, Dict, Any
@@ -9,8 +11,12 @@ import argparse
 
 from loguru import logger
 
-from installer import run_installation
-from uninstaller import run_uninstallation, get_uninstall_info, check_hugoaura_installation
+from app.install_manager import run_installation
+from app.uninstall_manager import (
+    run_uninstallation,
+    get_uninstall_info,
+    check_hugoaura_installation,
+)
 from utils.version_manager import version_manager
 
 
