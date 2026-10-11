@@ -18,23 +18,30 @@ TARGET_ASAR_NAME = "app.asar"
 EXTRACTED_FOLDER_NAME = "aura"
 
 # 下载 URL 列表
-# 已于 2026-09 用真实 release 资产 (aura.zip) 两轮实测筛选:
-# 剔除失效源 (gh.llkk.cc 超时 / github.dpik.top 失效 / ghfast.top 限速严重
-# / gh.acmsz.top 403 / cfgh.ikgy.top 403 / gh.ddlc.top 429 / github.geekery.cn 极慢),
-# 并补充新可用源; 顺序仅作测速失败时的回退顺序, 正常使用前会自动测速排序
+# 于 2026-10-11 用真实 release 资产 (v0.3.0/core.zip) 全量实测筛选:
+# 节点池来源为 GitHub Accelerator 扩展的 nodes.json (81 节点) + 原有源,
+# 共 85 个候选; 以 "GET 真实文件 + SHA256 内容验证 + 响应延迟" 为标准,
+# 剔除 DNS 异常 (githubdog.com / js.jiangss.shop 等)、限流 (429) 和超时源,
+# 补入实测延迟 <= 1.8s 的优秀源。顺序仅作测速失败时的回退顺序,
+# 正常使用前会自动测速排序 (GET core.zip 校验内容, 结果缓存 2 小时)
 BASE_DOWNLOAD_URLS = [
-    f"https://git.yylx.win/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://github.chenc.dev/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://gh.07150721.xyz/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
     f"https://cdn.gh-proxy.org/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://axisnow.gh-proxy.org/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://cfgh.ikgy.top/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://github.chenc.dev/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://gh.jjj.gv.uy/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://ghproxy.imciel.com/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://gh.acmsz.top/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
     f"https://gh-proxy.org/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://githubdog.com/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://js.jiangss.shop/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://gh.927223.xyz/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://v4.gh-proxy.org/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://axisnow.gh-proxy.org/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
     f"https://ghproxy.felicity.land/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://github.tbap.top/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
-    f"https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",  # 直连兜底
+    f"https://gg.z321.cc.cd/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://gh.my-website.ccwu.cc/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://g.z321.cc.cd/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://free.cn.eu.org/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://github.mxw.qzz.io/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://git.yylx.win/https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",
+    f"https://github.com/{GITHUB_OWNER}/{GITHUB_DL_REPO}/releases/download",  # 官方直连兜底
 ]
 
 # GitHub API URL
@@ -53,6 +60,10 @@ HUGOAURA_REGISTRY_KEY = r"SOFTWARE\\HugoAura"
 
 # 进程杀死间隔
 PROCESS_KILL_INTERVAL_SECONDS = 0.5
+
+# 安装/更新成功后延迟启动希沃管家 (秒); 设为 0 关闭该行为
+# 到时先检查进程是否已在运行 (守护可能已自行拉起), 未运行才启动
+POST_INSTALL_RESTART_DELAY_SECONDS = 20
 
 # 退出代码释义
 EXIT_CODES = {

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import ipaddress
-import socket
 import requests
 import time
 import zipfile
@@ -18,14 +16,29 @@ from config.config import (
     TEMP_INSTALL_DIR,
     GITHUB_API_URL,
 )
+from utils.netguard import is_safe_url as _is_safe_url
+from utils.netguard import safe_get
+from utils.netguard import safe_get_follow
 import typeDefs.lifecycle
 import lifecycle as lifecycleMgr
-import asyncio
-import aiohttp
-from typing import List, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List
 
 
 desiredTag = None
+
+# 测速配置
+SPEED_TEST_TIMEOUT_SECONDS = 5.0       # 阶段一: 单源健康度/延迟探测超时
+SPEED_TEST_CACHE_TTL_SECONDS = 2 * 60 * 60  # 测速结果缓存 2 小时
+SPEED_PROBE_COUNT = 5                 # 阶段二: 参与带宽探测的名额
+# 阶段二: 每源拉取的字节数 (Range 请求)。
+# 流量预算: 摘要 ~50KB + 阶段一 17源×6KB ≈ 100KB + 阶段二 5源×128KB = 640KB
+#          + 实际下载 ~0.6MB ≈ 1.3MB (含一次重试余量 < 1.9MB)
+SPEED_PROBE_BYTES = 128 * 1024
+BANDWIDTH_PROBE_TIMEOUT_SECONDS = 6.0  # 阶段二: 单源带宽探测超时
+# 综合排序的预估基准: aura.zip 的近似大小, 用于 "延迟 + 传输时间" 估算
+AURA_ESTIMATED_SIZE_BYTES = 560 * 1024
+_speed_test_cache: dict = {}           # 进程内缓存: {"order": {tag, timestamp, urls}}
 
 
 def _compute_sha256(path: Path) -> str:
@@ -50,7 +63,7 @@ def fetch_release_asset_digests(tag_name: str) -> dict:
 
     headers = {"User-Agent": "HugoAura-Install", "Accept": "application/vnd.github+json"}
     try:
-        resp = requests.get(url, timeout=30, headers=headers)
+        resp = safe_get(url, timeout=30, headers=headers)
         resp.raise_for_status()
         release = resp.json()
     except Exception as e:
@@ -66,56 +79,6 @@ def fetch_release_asset_digests(tag_name: str) -> dict:
     return digests
 
 
-# 代理软件 (Clash/Mihomo 等) TUN+Fake-IP 模式的 DNS 虚拟地址段,
-# 对应 RFC 2544 / RFC 4038 的基准测试保留段。此类地址不可公网路由,
-# 请求会经本机代理栈转发, 不构成 SSRF 风险; 而访问 GitHub 普遍依赖
-# 该模式, 因此解析到这些段时放行, 其余内网/保留段照旧拒绝。
-_FAKE_IP_NETWORKS = (
-    ipaddress.ip_network("198.18.0.0/15"),
-    ipaddress.ip_network("2001:2::/48"),
-)
-
-
-def _is_safe_url(url: str) -> bool:
-    """校验下载 URL, 仅允许 http/https 且所有解析结果均为公网地址。
-
-    采用"任一地址不安全即拒绝"的严格策略, 防止 DNS rebinding:
-    若某个域名同时解析出公网和内网地址, 应视为不可信, 而不是放行。
-    代理 Fake-IP 段除外 (见 _FAKE_IP_NETWORKS)。
-    """
-    try:
-        parsed = urlparse(url)
-    except Exception:
-        return False
-
-    if parsed.scheme not in ("http", "https"):
-        return False
-
-    host = parsed.hostname
-    if not host:
-        return False
-
-    try:
-        for info in socket.getaddrinfo(host, None):
-            ip = ipaddress.ip_address(info[4][0])
-            if any(ip in net for net in _FAKE_IP_NETWORKS):
-                log.info(f"DNS 解析到代理 Fake-IP 地址 ({ip}), 放行下载")
-                continue
-            if (
-                ip.is_loopback
-                or ip.is_private
-                or ip.is_link_local
-                or ip.is_reserved
-                or ip.is_multicast
-                or ip.is_unspecified
-            ):
-                return False
-    except Exception:
-        return False
-
-    return True
-
-
 def download_file(
     url: str,
     dest_folder: str,
@@ -129,6 +92,13 @@ def download_file(
         log.error(f"拒绝下载非法 URL (仅允许 http/https 公网地址): {url}")
         return None
 
+    # 路径防御: 下载目标必须位于临时下载目录内, 防止路径穿越
+    try:
+        dest_path.resolve().relative_to(Path(TEMP_INSTALL_DIR).resolve())
+    except ValueError:
+        log.error(f"拒绝写入临时下载目录之外的路径: {dest_path}")
+        return None
+
     try:
         dest_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -136,7 +106,10 @@ def download_file(
             "Accept-Encoding": "",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
         }
-        with requests.get(url, stream=True, timeout=60, headers=downloadHeaders) as r:
+        # 受限请求: 校验起始 URL 并手动跟随重定向 (每一跳都重新校验)
+        with safe_get_follow(
+            url, timeout=60, headers=downloadHeaders, stream=True
+        ) as r:
             r.raise_for_status()
             total_size = int(r.headers.get("content-length", 0))
             log.info(
@@ -145,7 +118,11 @@ def download_file(
                 else "文件大小: 未知"
             )
 
-            with open(dest_path, "wb") as f:
+            # 流式写入用底层 fd 打开 (行为与 open("wb") 一致)
+            dest_fd = os.open(
+                str(dest_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644
+            )
+            with os.fdopen(dest_fd, "wb") as f:
                 downloaded_size = 0
                 chunk_size = 8192
                 for chunk in r.iter_content(chunk_size=chunk_size):
@@ -199,85 +176,195 @@ def download_file(
         return None
 
 
-async def test_download_source_speed(
-    base_url: str, test_filename: str = None
-) -> Tuple[str, float, bool]:
-    test_url = f"{base_url}/{desiredTag}/{AURA_FILENAME}" if test_filename else base_url
+def _speed_test_single(
+    base_url: str, tag: str, expected_sha256: str | None
+) -> tuple[str, float, bool]:
+    """单源测速: GET 真实资源小文件 (core.zip, 约 6KB) 并校验 SHA256 内容。
 
+    参考 GitHub Accelerator 扩展的做法: 相比 HEAD 请求, GET 真实文件
+    能识别"返回 200 但内容是错误页"的污染源。
+    """
+    test_url = f"{base_url}/{tag}/{CORE_FILENAME}"
     if not _is_safe_url(test_url):
         log.warning(f"跳过非法测速 URL: {test_url}")
         return (base_url, float("inf"), False)
 
+    start = time.perf_counter()
     try:
-        start_time = time.time()
+        with safe_get_follow(
+            test_url,
+            timeout=(SPEED_TEST_TIMEOUT_SECONDS, SPEED_TEST_TIMEOUT_SECONDS),
+            headers={"User-Agent": "Mozilla/5.0 HugoAura-Install", "Accept-Encoding": "identity"},
+        ) as resp:
+            resp.raise_for_status()
+            data = resp.content
+        latency = time.perf_counter() - start
 
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=10)
-        ) as session:
-            async with session.head(test_url) as response:
-                if response.status == 200:
-                    response_time = time.time() - start_time
-                    return (base_url, response_time, True)
-                else:
-                    return (base_url, float("inf"), False)
+        # 内容验证: 有权威摘要时, 哈希不匹配即判定为污染源
+        if expected_sha256 and hashlib.sha256(data).hexdigest().lower() != expected_sha256.lower():
+            log.warning(f"测速源 {base_url} 内容校验失败, 判定为不可信源")
+            return (base_url, float("inf"), False)
 
+        return (base_url, latency, True)
     except Exception as e:
-        log.warning(f"测速失败 {base_url}: {e}")
+        log.debug(f"测速失败 {base_url}: {e}")
         return (base_url, float("inf"), False)
 
 
-async def benchmark_download_sources(tag_name: str) -> List[str]:
-    log.info("正在测试下载源速度...")
+def _measure_bandwidth(base_url: str, tag: str) -> float | None:
+    """阶段二带宽探测: Range 拉取真实待下载文件 (aura.zip) 的前 128KB。
 
-    tasks = [
-        test_download_source_speed(url, AURA_FILENAME) for url in BASE_DOWNLOAD_URLS
-    ]
-    results = await asyncio.gather(*tasks)
+    延迟快不等于带宽快 (小文件只测到 RTT/TLS 握手); 用实际字节速率排序,
+    对 aura.zip 的下载更准。Range 响应为 206, 也能避开部分代理不回
+    content-length 的问题。测量失败返回 None (调用方回退延迟排序)。
 
-    # 筛选可用源并按响应时间排序
-    available_sources = [(url, time) for url, time, available in results if available]
-    available_sources.sort(key=lambda x: x[1])
+    速率计算剔除建连耗时 (resp.elapsed = TCP+TLS+服务器处理):
+    128KB 样本较短, 不剔除的话建连时间会主导测量, 排名偏向"建连快"
+    而非"传输快"。
+    """
+    url = f"{base_url}/{tag}/{AURA_FILENAME}"
+    if not _is_safe_url(url):
+        return None
 
-    sorted_urls = [url for url, _ in available_sources]
+    start = time.perf_counter()
+    got = 0
+    try:
+        with safe_get_follow(
+            url,
+            timeout=(BANDWIDTH_PROBE_TIMEOUT_SECONDS, BANDWIDTH_PROBE_TIMEOUT_SECONDS),
+            headers={
+                "User-Agent": "Mozilla/5.0 HugoAura-Install",
+                "Accept-Encoding": "identity",
+                "Range": f"bytes=0-{SPEED_PROBE_BYTES - 1}",
+            },
+            stream=True,
+        ) as resp:
+            if resp.status_code not in (200, 206):
+                return None
+            ttfb = resp.elapsed.total_seconds()  # 到响应头为止的建连耗时
+            for chunk in resp.iter_content(32 * 1024):
+                got += len(chunk)
+                if got >= SPEED_PROBE_BYTES:
+                    break
 
-    # 输出测速结果
-    for url, response_time in available_sources[:3]:  # 只输出前 3 个最快的
+        total = time.perf_counter() - start
+        transfer = max(total - ttfb, 0.0)
+        # 退化样本不参与排序: 数据量过小, 或传输时间过短 (除零/抖动)
+        if got < SPEED_PROBE_BYTES // 4 or transfer <= 0.05:
+            return None
+        return got / transfer
+    except Exception:
+        return None
+
+
+def benchmark_download_sources(
+    tag: str, expected_sha256: str | None = None
+) -> List[str]:
+    """两阶段并发测速, 返回按质量排序的 URL 列表。
+
+    - 阶段一 (SCREEN): GET 真实小文件 (core.zip) 并验证 SHA256, 筛掉
+      死源/限流源/污染源, 记录延迟
+    - 阶段二 (RANK): 最快的 5 个源对 aura.zip 做并发 Range 探测,
+      按实际带宽排序 (延迟快不代表带宽快)
+    - 结果缓存 2 小时, core.zip 与 aura.zip 两次下载共用一次测速
+    - 全部失败时保持默认顺序 (官方直连兜底)
+    """
+    cached = _speed_test_cache.get("order")
+    if (
+        cached
+        and cached.get("tag") == tag
+        and time.time() - cached.get("timestamp", 0) < SPEED_TEST_CACHE_TTL_SECONDS
+    ):
+        log.info("使用缓存的测速结果")
+        return cached["urls"]
+
+    log.info(
+        f"开始并发测速 ({len(BASE_DOWNLOAD_URLS)} 个源, GET {CORE_FILENAME} 校验内容)..."
+    )
+    results = {}
+    with ThreadPoolExecutor(max_workers=len(BASE_DOWNLOAD_URLS)) as pool:
+        futures = {
+            pool.submit(_speed_test_single, url, tag, expected_sha256): url
+            for url in BASE_DOWNLOAD_URLS
+        }
+        for fut in as_completed(futures):
+            url, latency, ok = fut.result()
+            results[url] = (latency, ok)
+
+    verified = sorted((lat, url) for url, (lat, ok) in results.items() if ok)
+
+    # 阶段二: 延迟最快的前几名测真实带宽 (并发, 与阶段一慢尾无重叠必要,
+    # 阶段一已全部结算)
+    phase2 = [url for _, url in verified[:SPEED_PROBE_COUNT]]
+    measured: List[tuple[float, str]] = []
+    probed_failed: List[str] = []
+    if phase2:
+        log.info(f"对延迟最快的 {len(phase2)} 个源进行带宽探测 (Range 拉 {AURA_FILENAME})...")
+        with ThreadPoolExecutor(max_workers=len(phase2)) as pool:
+            bps_futures = {
+                url: pool.submit(_measure_bandwidth, url, tag) for url in phase2
+            }
+        for url, fut in bps_futures.items():
+            bps = fut.result()
+            if bps:
+                measured.append((bps, url))
+            else:
+                probed_failed.append(url)
+
+    # 综合排序: 预估下载 aura.zip 的总时间 = 延迟 + 传输时间 (大小/带宽)。
+    # 纯带宽排序会漏掉"带宽第一但延迟一般"以外的综合优解;
+    # 按预估总时间升序, 带宽快且延迟也不差的源自然排前。
+    latency_by_url = {url: lat for lat, url in verified}
+    scored = []
+    for bps, url in measured:
+        latency = latency_by_url.get(url, 1.0)
+        est_seconds = latency + AURA_ESTIMATED_SIZE_BYTES / bps
+        scored.append((est_seconds, bps, url))
+    scored.sort()
+    for est, bps, url in scored[:3]:
         log.info(
-            f"下载源 {url.split('//')[1].split('/')[0]} 响应时间: {response_time:.2f}s"
+            f"综合最优: {urlparse(url).hostname} "
+            f"带宽 {bps / 1024:.0f} KB/s, 预估下载 {AURA_FILENAME} 约 {est:.1f}s"
         )
 
-    return sorted_urls if sorted_urls else BASE_DOWNLOAD_URLS
+    measured_urls = [url for _, _, url in scored]
+    probed_set = set(phase2)
+    unprobed = [url for _, url in verified if url not in probed_set]
+
+    ordered = measured_urls + unprobed + probed_failed
+    for url in BASE_DOWNLOAD_URLS:
+        if url not in ordered:
+            ordered.append(url)  # 阶段一失败/污染源按默认顺序垫底
+
+    if verified:
+        best_host = urlparse(ordered[0]).hostname
+        log.info(
+            f"测速完成, 最优源: {best_host}, "
+            f"阶段一可用 {len(verified)}/{len(BASE_DOWNLOAD_URLS)}"
+        )
+    else:
+        log.warning("所有源测速失败, 保持默认顺序下载")
+
+    _speed_test_cache["order"] = {
+        "tag": tag,
+        "timestamp": time.time(),
+        "urls": ordered,
+    }
+    return ordered
 
 
 def download_file_multi_sources(
     filename: str,
     dest_folder: str,
-    use_speed_optimization: bool = True,
     expected_sha256: str | None = None,
+    download_urls: List[str] | None = None,
 ) -> Path | None:
     """
-    尝试从多个下载源下载文件
+    尝试从多个下载源下载文件 (按传入的测速排序顺序依次尝试)
     """
     global desiredTag
 
-    download_urls = BASE_DOWNLOAD_URLS
-
-    if use_speed_optimization and desiredTag:
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            optimized_urls = loop.run_until_complete(
-                benchmark_download_sources(desiredTag)
-            )
-            loop.close()
-
-            if optimized_urls:
-                download_urls = optimized_urls
-                log.info("测速完成, 将按测速顺序进行下载")
-        except Exception as e:
-            log.warning(f"测速失败, 使用默认顺序: {e}")
-
-    for base_url in download_urls:
+    for base_url in download_urls or BASE_DOWNLOAD_URLS:
         url = f"{base_url}/{desiredTag}/{filename}"
         result = download_file(url, dest_folder, filename, expected_sha256=expected_sha256)
         if result == "DL_CANCEL":
@@ -307,7 +394,25 @@ def unzip_file(zip_path: Path, extract_to: Path) -> bool:
         return False
 
 
-def download_release_files(tagName) -> tuple[Path | None, Path | None]:
+def download_release_files(
+    tagName, status_callback=None
+) -> tuple[Path | None, Path | None]:
+    """下载指定 release 的资源文件。
+
+    参数:
+        tagName: release 标签
+        status_callback: 可选状态回调 (str -> None), 把 "测速中/下载中"
+            等阶段提示实时推给界面, 避免测速期间界面停留在旧提示上
+            像卡住。
+    """
+
+    def emit_status(text: str):
+        if status_callback:
+            try:
+                status_callback(text)
+            except Exception as e:
+                log.debug(f"状态回调失败 (忽略): {e}")
+
     log.info(f"准备下载 HugoAura 资源文件...")
 
     global desiredTag
@@ -333,6 +438,7 @@ def download_release_files(tagName) -> tuple[Path | None, Path | None]:
     downloaded_zip_path = None
 
     # 获取权威 SHA256 摘要; 失败时为空字典, 走原有仅字节数校验逻辑
+    emit_status("正在获取资源校验信息...")
     digests = fetch_release_asset_digests(tagName)
     core_sha = digests.get(CORE_FILENAME)
     aura_sha = digests.get(AURA_FILENAME)
@@ -342,15 +448,27 @@ def download_release_files(tagName) -> tuple[Path | None, Path | None]:
     else:
         log.warning("未获取到资源 SHA256 摘要, 下载后仅校验字节数")
 
+    # 一次并发测速 (GET core.zip + 哈希验证), core 与 aura 两次下载共用结果
+    emit_status("正在进行下载测速...")
+    ordered_urls = benchmark_download_sources(tagName, core_sha)
+
+    emit_status(f"正在下载资源文件 ({CORE_FILENAME})...")
     downloaded_core_path = download_file_multi_sources(
-        CORE_FILENAME, str(temp_dir), expected_sha256=core_sha
+        CORE_FILENAME,
+        str(temp_dir),
+        expected_sha256=core_sha,
+        download_urls=ordered_urls,
     )
     if not downloaded_core_path:
         log.critical("下载 core.zip 时发生错误, 安装进程终止。")
         return None, None
 
+    emit_status(f"正在下载资源文件 ({AURA_FILENAME})...")
     downloaded_zip_path = download_file_multi_sources(
-        AURA_FILENAME, str(temp_dir), expected_sha256=aura_sha
+        AURA_FILENAME,
+        str(temp_dir),
+        expected_sha256=aura_sha,
+        download_urls=ordered_urls,
     )
     if not downloaded_zip_path:
         log.critical("下载 aura.zip 时发生错误, 安装进程终止。")
