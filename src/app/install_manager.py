@@ -242,8 +242,13 @@ def run_installation(args, installerClassIns=None):
         log.info(step)
 
     def rep_dl_progress(curDownloadSize, fullSize, fileName):
-        progress = round(curDownloadSize / fullSize * 100, 2)
-        update_progress(progress, f"[3 / 10] {fileName} 文件下载中, 进度: {progress} %")
+        if fullSize > 0:
+            progress = round(curDownloadSize / fullSize * 100, 2)
+            update_progress(progress, f"[3 / 10] {fileName} 文件下载中, 进度: {progress} %")
+        else:
+            # 镜像未返回 content-length 时无法计算百分比, 进度条保持阶段值
+            mb = curDownloadSize / 1024 / 1024
+            update_progress(32, f"[3 / 10] {fileName} 文件下载中, 已下载 {mb:.2f} MB")
 
     try:
         update_progress(0, "[0 / 10] 准备")

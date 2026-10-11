@@ -135,9 +135,15 @@ def download_file(
                         )
                         if callbackFuncName in lifecycleMgr.callbacks.keys():
                             if lifecycleMgr.callbacks[callbackFuncName]:
-                                lifecycleMgr.callbacks[callbackFuncName](
-                                    downloaded_size, total_size, f.name.split("\\")[-1]
-                                )  # type: ignore
+                                try:
+                                    lifecycleMgr.callbacks[callbackFuncName](
+                                        downloaded_size, total_size, filename
+                                    )  # type: ignore
+                                except Exception as cb_err:
+                                    # 取消信号必须继续向上抛, 其余回调异常只影响进度展示
+                                    if "INSTALLATION_CANCELLED" in str(cb_err):
+                                        raise
+                                    log.debug(f"进度回调异常 (不影响下载): {cb_err}")
 
         log.success(f"文件 {filename} 下载成功。")
         # 完整性校验: 当服务器提供 content-length 时, 校验实际下载字节数
