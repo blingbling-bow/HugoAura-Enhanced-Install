@@ -5,12 +5,17 @@
 
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List
 
 import requests
+
+# 复用安装器的网络校验 (脚本与 src 同仓库)
+sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
+from utils.netguard import safe_get
 
 
 def get_github_releases(repo: str, token: str) -> List[Dict]:
@@ -31,7 +36,7 @@ def get_github_releases(repo: str, token: str) -> List[Dict]:
     }
     
     try:
-        response = requests.get(url, headers=headers, timeout=30)
+        response = safe_get(url, timeout=30, headers=headers)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
@@ -60,6 +65,9 @@ def process_releases(releases_data: List[Dict]) -> Dict:
 
         tag_name = release.get("tag_name") or ""
         release_name = release.get("name") or ""
+
+        # 上游 release 名可能已带 [Rel]/[Pre] 前缀, 剥离避免二次叠加
+        release_name = re.sub(r"^\[(?:Rel|Pre|CI)\]\s*", "", release_name).strip()
 
         # CI 自动构建的 tag 形如 vAutoBuild-<commit短hash>, 或名称以 [CI] 开头
         is_ci = tag_name.startswith("vAutoBuild") or release_name.startswith("[CI]")
@@ -96,7 +104,7 @@ def process_releases(releases_data: List[Dict]) -> Dict:
         ci_builds = [ci_releases[0]]
 
     return {
-        "last_updated": datetime.now(timezone.utc).isoformat() + "Z",
+        "last_updated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "releases": releases,
         "prereleases": prereleases,
         "ci_builds": ci_builds,
@@ -129,15 +137,22 @@ def get_download_url(release: Dict) -> str:
 
 def update_versions_file(versions_data: Dict, file_path: Path) -> bool:
     """
-    更新 versions.json 文件
-    
+    更新版本文件
+
     Args:
         versions_data: 新的版本数据
         file_path: 版本文件路径
-        
+
     Returns:
         是否有更新
     """
+    # 路径防御: 规范化并确保目标位于 src/app/public 下, 防止路径穿越
+    file_path = Path(file_path).resolve()
+    allowed_root = (Path(__file__).parents[1] / "src" / "app" / "public").resolve()
+    if allowed_root not in file_path.parents:
+        print(f"❌ 拒绝写入允许目录之外的路径: {file_path}")
+        sys.exit(1)
+
     # 检查文件是否存在以及内容是否有变化
     if file_path.exists():
         try:
@@ -159,9 +174,9 @@ def update_versions_file(versions_data: Dict, file_path: Path) -> bool:
     # 写入新的版本数据
     try:
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(versions_data, f, ensure_ascii=False, indent=2)
-        
+        payload = json.dumps(versions_data, ensure_ascii=False, indent=2)
+        file_path.write_text(payload, encoding="utf-8")
+
         print(f"✅ 版本信息已更新: {file_path}")
         return True
     except Exception as e:
