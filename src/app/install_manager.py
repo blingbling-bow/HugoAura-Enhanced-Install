@@ -9,6 +9,8 @@ import requests
 from pathlib import Path
 from loguru import logger as log
 from utils import dirSearch, fileDownloader, killer, asarPatcher
+from utils.diagnostics import log_failure_diagnostics
+from utils.netguard import safe_get
 from config import config
 import lifecycle as lifecycleMgr
 import typeDefs.lifecycle as lifecycleTypes
@@ -23,10 +25,59 @@ class InstallError(Exception):
         self.exit_code = exit_code
 
 
+def _schedule_seewo_restart(install_dir_path: Path):
+    """安装/更新成功后, 安排延迟启动希沃管家。
+
+    使用独立的分离 PowerShell 进程计时, 不受安装器退出影响;
+    到时先检查希沃管家进程是否已在运行 (守护可能已自行拉起),
+    未运行才启动, 避免重复拉起。
+    """
+    delay = config.POST_INSTALL_RESTART_DELAY_SECONDS
+    if delay <= 0:
+        log.info("已禁用安装后延迟启动希沃管家")
+        return
+
+    # exe 位于 resources 的上一级 (SeewoServiceAssistant 目录)
+    exe_candidates = [
+        install_dir_path.parent / "SeewoServiceAssistant.exe",
+        install_dir_path.parent.parent / "SeewoServiceAssistant.exe",
+    ]
+    exe_path = next((c for c in exe_candidates if c.exists()), None)
+    if not exe_path:
+        log.warning(
+            "未找到 SeewoServiceAssistant.exe, 跳过延迟启动 "
+            f"(已尝试: {[str(c) for c in exe_candidates]})"
+        )
+        return
+
+    log.info(f"将在 {delay} 秒后检查并启动希沃管家: {exe_path}")
+    try:
+        # PowerShell 单引号字符串中, 两个单引号转义为一个单引号
+        exe_escaped = str(exe_path).replace("'", "''")
+        dir_escaped = str(exe_path.parent).replace("'", "''")
+        # Get-Process 使用不带扩展名的进程名
+        proc_name = exe_path.stem
+        subprocess.Popen(
+            [
+                "powershell", "-NoProfile", "-NonInteractive",
+                "-WindowStyle", "Hidden", "-Command",
+                f"Start-Sleep -Seconds {delay}; "
+                f"if (-not (Get-Process -Name '{proc_name}' -ErrorAction SilentlyContinue)) {{ "
+                f"Start-Process -FilePath '{exe_escaped}' "
+                f"-WorkingDirectory '{dir_escaped}' }}",
+            ],
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            close_fds=True,
+        )
+        log.success(f"已安排 {delay} 秒后检查并启动希沃管家 (未运行才启动)")
+    except Exception as e:
+        log.warning(f"安排延迟启动希沃管家失败: {e}")
+
+
 def fetch_github_releases():
     url = config.GITHUB_API_URL
     try:
-        resp = requests.get(url, timeout=30)
+        resp = safe_get(url, timeout=30)
         resp.raise_for_status()
         return resp.json()
     except Exception as e:
@@ -166,6 +217,7 @@ def run_installation(args, installerClassIns=None):
     dl_callback_name = None
     ssa_asar = config.TARGET_ASAR_NAME
     if_patch = True
+    current_step = "准备"
 
     error_detail = ""
     exit_code = 1
@@ -179,6 +231,8 @@ def run_installation(args, installerClassIns=None):
             status_callback(status)
 
     def update_progress(progress, step, status=None):
+        nonlocal current_step
+        current_step = step
         if installerClassIns:
             if not installerClassIns.is_installing:
                 update_status("安装已取消")
@@ -249,7 +303,10 @@ def run_installation(args, installerClassIns=None):
             update_progress(32, "[3 / 10] 正在下载资源文件")
             lifecycleMgr.callbacks[dl_callback_name] = rep_dl_progress
             downloaded_core_zip_path, downloaded_aura_zip_path = (
-                fileDownloader.download_release_files(download_source)
+                fileDownloader.download_release_files(
+                    download_source,
+                    status_callback=update_status,
+                )
             )
         if not downloaded_core_zip_path or not downloaded_aura_zip_path:
             log.critical("资源文件下载失败, 即将结束安装")
@@ -296,6 +353,8 @@ def run_installation(args, installerClassIns=None):
                     command,
                     capture_output=True,
                     text=True,
+                    encoding="mbcs",
+                    errors="replace",
                     check=False,
                     creationflags=creationflags,
                 )
@@ -368,7 +427,7 @@ def run_installation(args, installerClassIns=None):
         update_progress(70, "[7 / 10] 启动结束进程后台任务")
         if not args.dry_run:
             killer.start_killing_process()
-            time.sleep(2.0)
+            killer.wait_for_process_exit(timeout_seconds=30.0)
 
         if if_patch:
             update_progress(75, "[8 / 10] 置空校验数据")
@@ -471,6 +530,7 @@ def run_installation(args, installerClassIns=None):
         error_detail = e.message
         exit_code = e.exit_code
         log.critical(f"安装失败: {error_detail}")
+        log_failure_diagnostics(current_step, e, install_dir_path)
         install_success = False
     except Exception as e:
         error_detail = e
@@ -478,6 +538,7 @@ def run_installation(args, installerClassIns=None):
             log.warning(f"用户取消了安装操作")
         else:
             log.exception(f"安装过程中发生未知错误: {e}")
+            log_failure_diagnostics(current_step, e, install_dir_path)
         exit_code = 1
         install_success = False
     finally:
@@ -514,6 +575,10 @@ def run_installation(args, installerClassIns=None):
             log.error("---------------------------------------------")
             log.error(f"{config.APP_NAME} 安装失败")
             log.error("---------------------------------------------")
+
+        # 安装/更新成功后, 延迟启动希沃管家
+        if install_success and not args.dry_run and install_dir_path:
+            _schedule_seewo_restart(install_dir_path)
 
     if install_success:
         exit_code = 0
