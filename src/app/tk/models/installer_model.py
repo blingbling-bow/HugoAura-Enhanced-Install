@@ -33,6 +33,9 @@ class InstallerModel:
         # 当前操作: None / "install" / "update" / "uninstall"
         # 作为唯一的状态判别来源, 避免多个布尔标志同时为 True 造成歧义。
         self.current_operation: Optional[str] = None
+        # 一键更新的目标 tag (由 get_update_available 判定):
+        # 只推荐发行版, CI 构建由用户手动安装, 不作为更新目标
+        self.update_target_tag: Optional[str] = None
         self.install_thread = None
 
         # 回调函数
@@ -262,7 +265,13 @@ class InstallerModel:
                     elif "UNINSTALLATION_CANCELLED" in error_str:
                         error_message = "卸载已被用户取消"
                     elif "恢复原始ASAR文件失败" in error_str:
-                        error_message = f"卸载失败: {error_str}\n\n可能原因: \n- 文件被占用或权限不足\n- 磁盘空间不足\n\n建议: 关闭希沃管家相关程序后重试"
+                        error_message = (
+                            f"卸载失败: {error_str}\n\n"
+                            "可能原因: 希沃管家相关进程仍在运行或自动重启, "
+                            "导致 app.asar 被占用。\n\n"
+                            "建议: 重新执行卸载 (安装器已自动重试多次), "
+                            "若仍失败请手动结束希沃管家进程后重试。"
+                        )
                     elif "删除Aura文件夹失败" in error_str:
                         error_message = f"部分卸载失败: {error_str}\n\n主要卸载流程已完成, 但清理工作未完全成功。\n建议手动删除残留文件。"
                     else:
@@ -351,18 +360,24 @@ class InstallerModel:
         return args
 
     def _build_update_args(self) -> argparse.Namespace:
-        """构建一键更新参数 (始终更新到最新稳定版, 自动检测安装目录)"""
+        """构建一键更新参数。
+
+        优先使用检测到的更新目标 (CI 构建或发行版, 按 published_at 判定);
+        未检测到时回退到最新稳定版。
+        """
         args = argparse.Namespace()
 
         args.yes = True
-        args.latest = True
+        args.latest = False
         args.pre = False
         args.ci = False
-        args.version = None
+        args.version = self.update_target_tag or None
         args.path = None
         args.dir = None
         args.dry_run = False
         args.operation_name = "更新"
+        if not args.version:
+            args.latest = True
 
         return args
 
@@ -397,35 +412,91 @@ class InstallerModel:
             return False
 
     def get_update_available(self) -> Dict[str, Any]:
-        """检查已安装版本是否为最新稳定版"""
+        """检查是否存在可用更新 (按发布时间比新旧, 只推荐发行版)。
+
+        CI 自动构建 (vAutoBuild-*) 不作为更新目标: CI 安装由用户手动进行,
+        一键更新只引导到发行版。CI tag 是 commit hash, 没有版本大小关系,
+        因此新旧一律用 GitHub 发布时间 (published_at) 比较:
+
+        - 已装发行版 → 有发布时间更新的发行版才提示
+        - 已装 CI → 仅当发行版发布时间比当前 CI 构建新时提示;
+          更新的 CI 构建不提示, 由用户手动安装
+        """
         is_installed, install_info = check_hugoaura_installation()
         if not is_installed:
             return {
                 "installed": False,
                 "installed_version": None,
-                "latest_version": None,
+                "update_target": None,
+                "target_is_ci": False,
                 "update_available": False,
+                "offline": False,
             }
 
-        installed_version = install_info.get("version")
-        latest_version = None
+        # 离线模式 (GitHub API 不可用, 回退到本地 versions.json 快照) 下
+        # 跳过更新检查: 快照是静态的, 其中的"最新版本"可能落后于已安装
+        # 版本, 任何比较结果都不可靠。
         try:
-            latest = version_manager.get_latest_release()
-            if latest:
-                latest_version = latest.get("tag")
-        except Exception as e:
-            logger.warning(f"获取最新版本失败: {e}")
+            data_source = version_manager.get_versions().get("data_source")
+        except Exception:
+            data_source = None
+        if data_source != "github_api":
+            logger.info(
+                f"版本信息来源为 {data_source or 'empty'} (离线模式), 跳过更新检查"
+            )
+            self.update_target_tag = None
+            return {
+                "installed": True,
+                "installed_version": install_info.get("version"),
+                "update_target": None,
+                "target_is_ci": False,
+                "update_available": False,
+                "offline": True,
+            }
 
-        update_available = bool(
-            installed_version
-            and latest_version
-            and installed_version not in ("", "local")
-            and installed_version != latest_version
-        )
+        installed = install_info.get("version")
+        if not installed or installed in ("", "local"):
+            # local 安装无法与 release 比较
+            self.update_target_tag = None
+            return {
+                "installed": True,
+                "installed_version": installed,
+                "update_target": None,
+                "target_is_ci": False,
+                "update_available": False,
+                "offline": False,
+            }
+
+        # 已装版本的发布时间; None 表示太旧不在列表里 / 离线数据不全,
+        # 视为过期, 有更新候选即提示
+        installed_at = version_manager.find_published_at(installed)
+
+        def is_newer(candidate_at: Optional[str]) -> bool:
+            if not candidate_at:
+                return False
+            if installed_at is None:
+                return True
+            # GitHub published_at 是统一 UTC ISO8601, 字符串比较即可
+            return candidate_at > installed_at
+
+        # CI 构建不作为更新目标 (由用户手动安装), 一键更新只推荐发行版
+        latest_stable = version_manager.get_latest_release()
+
+        target = None
+        if (
+            latest_stable
+            and latest_stable.get("tag") != installed
+            and is_newer(latest_stable.get("published_at"))
+        ):
+            target = latest_stable["tag"]
+
+        self.update_target_tag = target
 
         return {
             "installed": True,
-            "installed_version": installed_version,
-            "latest_version": latest_version,
-            "update_available": update_available,
+            "installed_version": installed,
+            "update_target": target,
+            "target_is_ci": False,
+            "update_available": target is not None,
+            "offline": False,
         }

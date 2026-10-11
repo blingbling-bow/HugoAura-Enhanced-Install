@@ -301,7 +301,8 @@ class MainController:
                 info = {
                     "installed": True,
                     "installed_version": None,
-                    "latest_version": None,
+                    "update_target": None,
+                    "target_is_ci": False,
                     "update_available": False,
                 }
             self.view.root.after(0, lambda: self._on_update_available(info))
@@ -319,27 +320,33 @@ class MainController:
 
         if update_available:
             installed_version = info.get("installed_version") or "未知"
-            latest_version = info.get("latest_version") or "未知"
+            target = info.get("update_target") or "未知"
+            channel = "CI 构建" if info.get("target_is_ci") else "发行版"
 
             # 有可用更新时隐藏“已安装”按钮, 避免按钮过多挤掉“取消”按钮
             self.view.set_install_button_visible(False)
             self.view.set_update_button_visible(True)
             self.view.set_update_button_state(True, "一键更新")
-            self.view.update_status(f"发现新版本 {latest_version}")
+            self.view.update_status(f"发现新版本 {target}")
             self.view.step_var.set(
-                f"当前版本 {installed_version} → 最新版本 {latest_version}"
+                f"当前版本 {installed_version} → {channel} {target}"
             )
             logger.info(
-                f"检测到可更新版本: {installed_version} -> {latest_version}"
+                f"检测到可更新版本: {installed_version} -> {target} ({channel})"
             )
         else:
             # 已是最新时恢复“已安装”按钮, 并隐藏更新按钮
             self.view.set_update_button_visible(False)
             self.view.set_update_button_state(False, "已是最新")
             self.view.set_install_button_visible(True)
-            self.view.update_status("HugoAura 已是最新版本")
-            self.view.step_var.set("当前已是最新版本")
-            logger.info("HugoAura 已是最新版本")
+            if info.get("offline"):
+                self.view.update_status("离线模式: 无法检查更新")
+                self.view.step_var.set("离线模式, 使用本地版本信息")
+                logger.info("离线模式 (本地版本快照), 跳过更新检查")
+            else:
+                self.view.update_status("HugoAura 已是最新版本")
+                self.view.step_var.set("当前已是最新版本")
+                logger.info("HugoAura 已是最新版本")
 
 
 # 便捷函数

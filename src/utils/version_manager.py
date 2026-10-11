@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from loguru import logger as log
 from config.config import GITHUB_OWNER, GITHUB_REPO
+from utils.netguard import safe_get
 
 
 class VersionManager:
@@ -88,9 +89,9 @@ class VersionManager:
             版本信息字典, 失败时返回None
         """
         try:
-            # 获取所有releases
+            # 获取所有releases (受限 GET: 校验地址, 不跟随重定向)
             releases_url = f"{self.api_base}/releases"
-            response = requests.get(releases_url, timeout=self.timeout)
+            response = safe_get(releases_url, timeout=self.timeout)
             response.raise_for_status()
             
             releases_data = response.json()
@@ -140,6 +141,7 @@ class VersionManager:
                 "releases": releases,
                 "prereleases": prereleases,
                 "ci_builds": ci_builds,
+                "ci_all": ci_releases,  # 完整 CI 构建列表 (含 published_at), 供新旧判断
                 "last_updated": releases_data[0].get("published_at") if releases_data else None
             }
             
@@ -233,6 +235,28 @@ class VersionManager:
         
         return None
     
+    def find_published_at(self, tag: str) -> Optional[str]:
+        """
+        查找指定 tag 的发布时间 (含完整 CI 构建列表)。
+
+        CI 构建 tag (vAutoBuild-<hash>) 之间没有版本大小关系,
+        新旧只能靠 published_at 判断。
+
+        Returns:
+            ISO8601 时间字符串; 找不到 (太旧被清理/离线数据不全) 返回 None
+        """
+        versions = self.get_versions()
+        for version_list in [
+            versions.get("releases", []),
+            versions.get("prereleases", []),
+            versions.get("ci_builds", []),
+            versions.get("ci_all", []),
+        ]:
+            for version in version_list:
+                if version.get("tag") == tag:
+                    return version.get("published_at")
+        return None
+
     def refresh_cache(self):
         """刷新缓存的版本信息"""
         self._cached_versions = None
