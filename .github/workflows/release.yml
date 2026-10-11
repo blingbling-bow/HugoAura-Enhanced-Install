@@ -89,19 +89,11 @@ jobs:
           merge-multiple: true
           path: assets
 
-      - name: Extract changelog section
+      - name: Generate release notes
         shell: python
         run: |
-          import re, sys, pathlib
-          tag = "${{ github.ref_name }}"
-          text = pathlib.Path("CHANGELOG.md") if pathlib.Path("CHANGELOG.md").exists() else None
-          body = ""
-          if text is not None:
-              m = re.search(rf"^## \[Rel\] {re.escape(tag)}\b.*?(?=^## |\Z)", text.read_text(encoding="utf-8"), re.M | re.S)
-              if m:
-                  body = m.group(0).strip()
-          pathlib.Path("release-notes.md").write_text(body or f"Release {tag}", encoding="utf-8")
-          print(f"notes length: {len(body)}")
+          import subprocess, sys
+          subprocess.run([sys.executable, "scripts/gen_release_notes.py", "${{ github.ref_name }}"], check=True)
 
       - name: Create release
         env:
