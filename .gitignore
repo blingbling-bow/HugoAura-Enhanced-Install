@@ -19,3 +19,11 @@ does
 # 本地文档与工具配置
 docs/
 .zcodeignore
+
+# 本地构建/发布临时目录
+.build-tools/
+release-assets/
+.venv-py38/
+wheels-py38/
+dist-py38/
+build-py38/
