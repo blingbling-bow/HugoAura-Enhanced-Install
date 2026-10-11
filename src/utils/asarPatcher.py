@@ -136,6 +136,20 @@ def patch_asar_file(input_asar_path, temp_extract_dir, output_asar_path, core_di
         str: 修改后的 ASAR 文件输出路径
     """
     try:
+        # 路径防御: 规范化所有路径, 拒绝包含上跳段的输入
+        input_asar_path = str(Path(input_asar_path).resolve())
+        temp_extract_dir = str(Path(temp_extract_dir).resolve())
+        output_asar_path = str(Path(output_asar_path).resolve())
+        core_dir = str(Path(core_dir).resolve())
+        for name, p in (
+            ("input_asar_path", input_asar_path),
+            ("temp_extract_dir", temp_extract_dir),
+            ("output_asar_path", output_asar_path),
+            ("core_dir", core_dir),
+        ):
+            if ".." in Path(p).parts:
+                raise ValueError(f"非法路径 ({name}): {p}")
+
         # 目录检查准备
         if not os.path.exists(core_dir):
             raise FileNotFoundError(f"Core 未找到: {core_dir}")
@@ -166,7 +180,7 @@ def patch_asar_file(input_asar_path, temp_extract_dir, output_asar_path, core_di
 
 
 def mainjs_patch(extracted_dir):
-    main_js_path = os.path.join(extracted_dir, "main.js")
+    main_js_path = Path(extracted_dir) / "main.js"
 
     if not os.path.exists(main_js_path):
         raise FileNotFoundError(f"{main_js_path} not found.")
@@ -200,5 +214,4 @@ def mainjs_patch(extracted_dir):
         "preload 注入点",
     )
 
-    with open(main_js_path, "w", encoding="utf-8") as f:
-        f.write(content)
+    main_js_path.write_text(content, encoding="utf-8")

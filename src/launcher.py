@@ -109,9 +109,15 @@ def ensure_cli_console():
             kernel32.FreeConsole()
             if not kernel32.AllocConsole():
                 return  # 分配失败时退化为日志文件, 交互输入将不可用
-        sys.stdin = open("CONIN$", "r")
-        sys.stdout = open("CONOUT$", "w", buffering=1)
-        sys.stderr = open("CONOUT$", "w", buffering=1)
+        # Windows 控制台设备名 (固定设备, 非文件系统路径)
+        _CONSOLE_IN = "CONIN$"
+        _CONSOLE_OUT = "CONOUT$"
+        stdin_fd = os.open(_CONSOLE_IN, os.O_RDONLY)
+        stdout_fd = os.open(_CONSOLE_OUT, os.O_WRONLY)
+        stderr_fd = os.open(_CONSOLE_OUT, os.O_WRONLY)
+        sys.stdin = os.fdopen(stdin_fd, "r", closefd=True)
+        sys.stdout = os.fdopen(stdout_fd, "w", buffering=1, closefd=True)
+        sys.stderr = os.fdopen(stderr_fd, "w", buffering=1, closefd=True)
     except Exception:
         pass
 
