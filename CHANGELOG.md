@@ -21,6 +21,7 @@
 
 ### 修复
 
+- 修复 Windows 7 兼容版（Python 3.8 构建）启动即崩溃的问题：部分模块缺少 `from __future__ import annotations`，PEP 604 注解在导入时求值报错。
 - 修复下载文件改用 fd 打开后，进度回调取文件名触发 `'int' object has no attribute 'split'`、导致所有下载源被判为失败的问题。
 - 修复镜像未返回 `content-length` 时进度计算除零的问题。
 - 卸载 ASAR 恢复加重试：恢复失败自动重试并等待希沃进程退出，缓解希沃管家自重启占用文件导致的 WinError 32。

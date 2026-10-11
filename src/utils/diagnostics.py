@@ -5,6 +5,8 @@
 "失败在哪一步、什么原因、环境是什么状态", 而不是只有一句异常文本。
 """
 
+from __future__ import annotations
+
 import shutil
 from pathlib import Path
 from loguru import logger as log
