@@ -76,6 +76,8 @@ hiddenimports = [
     'utils.dirSearch',
     'utils.fileDownloader',
     'utils.killer',
+    'utils.diagnostics',
+    'utils.netguard',
     'config.config',
 ]
 

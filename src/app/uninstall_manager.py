@@ -10,6 +10,7 @@ import winreg
 from pathlib import Path
 from loguru import logger as log
 from utils import dirSearch, killer
+from utils.diagnostics import log_failure_diagnostics
 from config import config
 
 
@@ -112,12 +113,16 @@ def backup_original_asar(install_path):
 def run_uninstallation(args=None, installerClassIns=None):
     uninstall_success = False
     error_detail = ""
+    install_info = {}
+    current_step = "准备"
 
     # 获取进度回调函数
     progress_callback = getattr(args, "progress_callback", None)
     status_callback = getattr(args, "status_callback", None)
 
     def update_progress(progress, step, status=None):
+        nonlocal current_step
+        current_step = step
         if installerClassIns:
             if not installerClassIns.is_uninstalling:
                 update_status("卸载已取消")
@@ -152,10 +157,10 @@ def run_uninstallation(args=None, installerClassIns=None):
             log.info(f"  安装路径: {install_info['install_path']}")
 
         update_progress(20, "[2 / 8] 停止相关进程")
-        # 启动进程终止任务
+        # 启动进程终止任务并等待目标进程真正退出
         if not (args and args.dry_run):
             killer.start_killing_process()
-            time.sleep(2.0)
+            killer.wait_for_process_exit(timeout_seconds=30.0)
 
         update_progress(30, "[3 / 8] 卸载文件系统过滤驱动")
         try:
@@ -166,6 +171,8 @@ def run_uninstallation(args=None, installerClassIns=None):
                     command,
                     capture_output=True,
                     text=True,
+                    encoding="mbcs",
+                    errors="replace",
                     check=False,
                     creationflags=creationflags,
                 )
@@ -186,8 +193,29 @@ def run_uninstallation(args=None, installerClassIns=None):
 
                     log.info(f"恢复原始ASAR文件: {backup_path} -> {current_asar}")
                     if not (args and args.dry_run):
-                        if current_asar.exists():
-                            os.remove(current_asar)
+                        # 希沃管家进程可能自重启并瞬间占用 app.asar,
+                        # 与安装侧保持一致: 删除失败时重试, 期间后台 killer 持续运行。
+                        max_retries = 20
+                        retry_interval = 1.0
+                        for attempt in range(1, max_retries + 1):
+                            if not current_asar.exists():
+                                log.info(f"未找到 {config.TARGET_ASAR_NAME}, 跳过删除...")
+                                break
+                            try:
+                                os.remove(current_asar)
+                                log.success(
+                                    f"旧的 {config.TARGET_ASAR_NAME} 删除成功。"
+                                )
+                                time.sleep(0.2)
+                                break
+                            except OSError as e:
+                                log.warning(
+                                    f"未能删除 {current_asar}: {e} | 文件可能仍被占用, "
+                                    f"等待进程退出后重试 ({attempt}/{max_retries})..."
+                                )
+                                if attempt == max_retries:
+                                    raise
+                                time.sleep(retry_interval)
                         shutil.copy2(backup_file, current_asar)
                         # 删除备份文件
                         os.remove(backup_file)
@@ -249,6 +277,9 @@ def run_uninstallation(args=None, installerClassIns=None):
     except Exception as e:
         error_detail = e
         log.error(f"卸载过程中发生错误: {e}")
+        log_failure_diagnostics(
+            current_step, e, install_info.get("install_path")
+        )
         uninstall_success = False
     finally:
         update_progress(90, "[8 / 8] 清理工作")
