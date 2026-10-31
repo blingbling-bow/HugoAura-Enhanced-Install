@@ -120,6 +120,10 @@ class MainWindow:
         # 居中显示窗口
         self._center_window()
 
+        # 防截屏: 把窗口排除出系统屏幕捕获 (截图/录屏/远程画面不可见)。
+        # 失败只记日志, 不影响安装流程
+        self._apply_capture_exclusion()
+
         # 回调函数
         self.install_callback: Optional[Callable] = None
         self.update_callback: Optional[Callable] = None
@@ -571,6 +575,33 @@ class MainWindow:
         x = max(0, int((screen_width - width) // 2))
         y = max(0, int((screen_height - height) // 2))
         self.root.geometry(f"{width}x{height}+{x}+{y}")
+
+    def _apply_capture_exclusion(self):
+        """把主窗口排除出系统屏幕捕获。
+
+        Tk 顶层包装窗口句柄 = GetParent(winfo_id()); 拿不到时先 update_idletasks
+        再试一次, 仍失败只记日志, 不影响安装流程。
+        """
+        try:
+            from loguru import logger as log
+
+            user32 = ctypes.windll.user32
+            hwnd = user32.GetParent(self.root.winfo_id())
+            if not hwnd:
+                self.root.update_idletasks()
+                hwnd = user32.GetParent(self.root.winfo_id())
+            if not hwnd:
+                log.warning("防截屏: 未能获取主窗口句柄, 功能未生效")
+                return
+            from utils.windowAffinity import apply_capture_exclusion
+
+            mode = apply_capture_exclusion(hwnd)
+            if mode:
+                log.info(f"防截屏 mode=0x{mode:X}")
+            else:
+                log.warning("防截屏: 系统不支持, 功能未生效")
+        except Exception as e:
+            log.warning(f"防截屏应用失败: {e}")
 
     def _on_scrollable_frame_configure(self, event):
         """

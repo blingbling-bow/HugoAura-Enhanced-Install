@@ -78,6 +78,7 @@ hiddenimports = [
     'utils.killer',
     'utils.diagnostics',
     'utils.netguard',
+    'utils.windowAffinity',
     'config.config',
 ]
 

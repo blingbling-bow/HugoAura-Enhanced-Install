@@ -65,6 +65,10 @@ PROCESS_KILL_INTERVAL_SECONDS = 0.5
 # 到时先检查进程是否已在运行 (守护可能已自行拉起), 未运行才启动
 POST_INSTALL_RESTART_DELAY_SECONDS = 20
 
+# 防截屏: 把安装器主窗口排除出系统屏幕捕获 (截图/录屏/远程画面不可见)。
+# Win10 2004+ 完全排除; 旧系统 (含 Win7) 降级为截屏黑块; 设为 False 关闭
+WINDOW_CAPTURE_EXCLUSION = True
+
 # 退出代码释义
 EXIT_CODES = {
     0: "安装成功",
