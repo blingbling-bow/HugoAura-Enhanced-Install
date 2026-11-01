@@ -5,12 +5,33 @@
 
 import json
 import os
+import re
 import requests
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from loguru import logger as log
-from config.config import GITHUB_OWNER, GITHUB_REPO
+from config.config import GITHUB_OWNER, GITHUB_REPO, INSTALLER_REPO
 from utils.netguard import safe_get
+
+
+def _release_triple(tag):
+    """从 "v0.0.5-beta" 提取 (0, 0, 5); 解析失败 (含 vAutoBuild-* / 空值) 返回 None"""
+    if not tag or not isinstance(tag, str):
+        return None
+    core = tag.strip().lstrip("vV").split("-")[0]
+    parts = re.findall(r"\d+", core)
+    if len(parts) < 3:
+        return None
+    return tuple(int(x) for x in parts[:3])
+
+
+def _is_newer_release(latest_tag, current_tag):
+    """最新 tag 的主.次.修订三元组是否严格大于当前; 任一解析失败视为不更新"""
+    a = _release_triple(latest_tag)
+    b = _release_triple(current_tag)
+    if not a or not b:
+        return False
+    return a > b
 
 
 class VersionManager:
@@ -256,6 +277,47 @@ class VersionManager:
                 if version.get("tag") == tag:
                     return version.get("published_at")
         return None
+
+    def check_installer_update(self, current_version):
+        """检查安装器自身是否有新版本 (最新 release 与内置版本号比较)。
+
+        网络失败、限流或解析失败一律返回 None, 不影响启动流程;
+        版本比较只看主.次.修订数字段, 后缀 (-beta 等) 与同号变体不提示。
+        """
+        try:
+            url = (
+                "https://api.github.com/repos/"
+                + INSTALLER_REPO
+                + "/releases/latest"
+            )
+            resp = safe_get(
+                url,
+                timeout=10,
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "User-Agent": "HugoAura-Install",
+                },
+            )
+            if resp.status_code != 200:
+                log.debug(f"安装器自更新检查: HTTP {resp.status_code}")
+                return None
+            data = resp.json()
+            latest_tag = (data.get("tag_name") or "").strip()
+            if not latest_tag:
+                return None
+            if _is_newer_release(latest_tag, current_version):
+                release_url = data.get("html_url") or (
+                    "https://github.com/"
+                    + INSTALLER_REPO
+                    + "/releases/latest"
+                )
+                log.info(f"安装器发现新版本: {current_version} -> {latest_tag}")
+                return {"latest_tag": latest_tag, "release_url": release_url}
+            log.debug(f"安装器已是最新: {current_version}")
+            return None
+        except Exception as e:
+            log.debug(f"安装器自更新检查失败: {e}")
+            return None
 
     def refresh_cache(self):
         """刷新缓存的版本信息"""

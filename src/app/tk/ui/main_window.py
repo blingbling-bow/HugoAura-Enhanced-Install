@@ -14,6 +14,7 @@ from tkinter.font import ITALIC
 from typing import Callable, Optional, Dict
 import ctypes
 import os
+import webbrowser
 from pathlib import Path
 from datetime import datetime
 from utils.version_manager import version_manager
@@ -1015,6 +1016,29 @@ class MainWindow:
             width=14,
         )
         about_btn.pack(side=BOTTOM)
+
+        # 安装器自更新提示按钮 (默认隐藏, 检测到新版本时显示)
+        self.selfupdate_url = None
+        self.selfupdate_btn = ttk_bs.Button(
+            parent,
+            text="",
+            command=self._on_selfupdate_click,
+            bootstyle=(SUCCESS, "link"),
+        )
+
+    def set_selfupdate_notice(self, text, url=""):
+        """显示/隐藏安装器自更新提示 (text 为空则隐藏)"""
+        if text:
+            self.selfupdate_url = url
+            self.selfupdate_btn.configure(text=text)
+            self.selfupdate_btn.pack(fill=X, pady=(4, 0))
+        else:
+            self.selfupdate_btn.pack_forget()
+
+    def _on_selfupdate_click(self):
+        """打开安装器最新 release 页面"""
+        if self.selfupdate_url:
+            webbrowser.open(self.selfupdate_url)
 
     def _update_version_inputs(self):
         """更新版本输入控件状态"""

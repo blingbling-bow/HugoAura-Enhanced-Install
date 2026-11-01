@@ -10,6 +10,8 @@ from loguru import logger
 
 from app.tk.ui.main_window import MainWindow
 from app.tk.models.installer_model import InstallerModel
+from utils.version_manager import version_manager
+from version import __appVer__
 import tkinter.messagebox as messagebox
 
 
@@ -29,6 +31,9 @@ class MainController:
 
         # 检查安装状态并更新UI
         self._check_installation_status()
+
+        # 启动时检查安装器自身是否有新版本 (后台, 不阻塞界面)
+        self._check_installer_update_async()
 
         logger.info("主控制器初始化完成")
 
@@ -309,6 +314,26 @@ class MainController:
 
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
+
+    def _check_installer_update_async(self):
+        """启动时后台检查安装器自身是否有新版本, 有则提示前往下载"""
+        def worker():
+            try:
+                info = version_manager.check_installer_update(__appVer__)
+            except Exception as e:
+                logger.debug(f"安装器自更新检查失败: {e}")
+                info = None
+            if info:
+                self.view.root.after(0, lambda: self._on_installer_update(info))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_installer_update(self, info: Dict[str, Any]):
+        """检测到安装器新版本: 界面显示前往下载入口"""
+        tag = info.get("latest_tag")
+        url = info.get("release_url")
+        logger.info(f"安装器有新版本: {__appVer__} -> {tag}")
+        self.view.set_selfupdate_notice(f"发现安装器新版本 {tag}, 点击前往下载", url)
 
     def _on_update_available(self, info: Dict[str, Any]):
         """根据更新检测结果更新一键更新按钮"""

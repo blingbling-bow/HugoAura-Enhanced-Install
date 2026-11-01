@@ -47,6 +47,10 @@ BASE_DOWNLOAD_URLS = [
 # GitHub API URL
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases"
 
+# 安装器自身所在仓库 (owner/repo), 启动时检查安装器自更新用。
+# 仓库曾更名, 旧名 HugoAura-Install 会重定向, 此处使用现名
+INSTALLER_REPO = "blingbling-bow/HugoAura-Enhanced-Install"
+
 # 目标路径模式
 SWASS_PATH_PATTERN = r"C:\\Program Files (x86)\\Seewo\\SeewoService\\SeewoService_*\\SeewoServiceAssistant\\resources"
 
