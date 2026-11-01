@@ -33,6 +33,9 @@ options:
   --pre                 安装最新的预发行版本
   -d DIR, --dir DIR     指定希沃管家安装目录
   -y, --yes             非交互模式, 自动确认所有操作
+  --mirror MIRROR       优先使用的镜像源前缀, 例如 https://gh-proxy.example (自动回退其余镜像)
+  --no-speedtest        跳过下载测速, 按内置顺序直接下载
+  --dry-run             不进行实际安装操作, 仅执行下载流程
   --list-exit-codes     显示所有退出代码及其释义
 ```
 
@@ -53,6 +56,12 @@ HugoAura-Install.exe --cli -p "C:\path\to\aura.zip" -y
 
 # 指定安装目录
 HugoAura-Install.exe --cli -l -d "C:\Program Files (x86)\Seewo\SeewoService\SeewoService_1.0.0\SeewoServiceAssistant\resources" -y
+
+# 指定优先镜像源 (自动回退到其余内置镜像与官方直连)
+HugoAura-Install.exe --cli -l -y --mirror https://gh-proxy.example
+
+# 跳过测速直接按内置顺序下载 (自动化环境最省时)
+HugoAura-Install.exe --cli -l -y --no-speedtest
 ```
 
 ### 退出代码释义

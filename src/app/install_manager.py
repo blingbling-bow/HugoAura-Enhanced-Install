@@ -311,6 +311,8 @@ def run_installation(args, installerClassIns=None):
                 fileDownloader.download_release_files(
                     download_source,
                     status_callback=update_status,
+                    mirror=getattr(args, "mirror", None),
+                    speedtest=not getattr(args, "no_speedtest", False),
                 )
             )
         if not downloaded_core_zip_path or not downloaded_aura_zip_path:

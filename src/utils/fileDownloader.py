@@ -19,6 +19,7 @@ from config.config import (
 from utils.netguard import is_safe_url as _is_safe_url
 from utils.netguard import safe_get
 from utils.netguard import safe_get_follow
+from utils.netguard import add_allowed_host
 import typeDefs.lifecycle
 import lifecycle as lifecycleMgr
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -263,8 +264,18 @@ def _measure_bandwidth(base_url: str, tag: str) -> float | None:
         return None
 
 
+def _with_mirror_first(urls, mirror):
+    """把 --mirror 指定的源排在候选列表最前 (去重)"""
+    if not mirror:
+        return urls
+    return [mirror] + [u for u in urls if u != mirror]
+
+
 def benchmark_download_sources(
-    tag: str, expected_sha256: str | None = None
+    tag: str,
+    expected_sha256: str | None = None,
+    mirror: str | None = None,
+    enabled: bool = True,
 ) -> List[str]:
     """两阶段并发测速, 返回按质量排序的 URL 列表。
 
@@ -282,7 +293,11 @@ def benchmark_download_sources(
         and time.time() - cached.get("timestamp", 0) < SPEED_TEST_CACHE_TTL_SECONDS
     ):
         log.info("使用缓存的测速结果")
-        return cached["urls"]
+        return _with_mirror_first(cached["urls"], mirror)
+
+    if not enabled:
+        log.info("已跳过下载测速 (--no-speedtest), 按默认顺序下载")
+        return _with_mirror_first(list(BASE_DOWNLOAD_URLS), mirror)
 
     log.info(
         f"开始并发测速 ({len(BASE_DOWNLOAD_URLS)} 个源, GET {CORE_FILENAME} 校验内容)..."
@@ -354,9 +369,9 @@ def benchmark_download_sources(
     _speed_test_cache["order"] = {
         "tag": tag,
         "timestamp": time.time(),
-        "urls": ordered,
+        "urls": _with_mirror_first(ordered, mirror),
     }
-    return ordered
+    return _with_mirror_first(ordered, mirror)
 
 
 def download_file_multi_sources(
@@ -401,7 +416,10 @@ def unzip_file(zip_path: Path, extract_to: Path) -> bool:
 
 
 def download_release_files(
-    tagName, status_callback=None
+    tagName,
+    status_callback=None,
+    mirror: str | None = None,
+    speedtest: bool = True,
 ) -> tuple[Path | None, Path | None]:
     """下载指定 release 的资源文件。
 
@@ -456,7 +474,13 @@ def download_release_files(
 
     # 一次并发测速 (GET core.zip + 哈希验证), core 与 aura 两次下载共用结果
     emit_status("正在进行下载测速...")
-    ordered_urls = benchmark_download_sources(tagName, core_sha)
+    if mirror:
+        mirror = mirror.strip().rstrip("/")
+        add_allowed_host(urlparse(mirror).hostname)
+        log.info(f"优先使用指定镜像: {mirror}")
+    ordered_urls = benchmark_download_sources(
+        tagName, core_sha, mirror=mirror, enabled=speedtest
+    )
 
     emit_status(f"正在下载资源文件 ({CORE_FILENAME})...")
     downloaded_core_path = download_file_multi_sources(

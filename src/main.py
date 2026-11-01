@@ -50,6 +50,14 @@ def parse_arguments():
     parser.add_argument(
         "--cli", help="以 CLI 模式启动", action="store_true"
     )
+    parser.add_argument(
+        "--mirror",
+        help="优先使用的镜像源前缀, 例如 https://gh-proxy.example (自动回退其余镜像)",
+        type=str,
+    )
+    parser.add_argument(
+        "--no-speedtest", help="跳过下载测速, 按内置顺序直接下载", action="store_true"
+    )
 
     return parser.parse_args()
 

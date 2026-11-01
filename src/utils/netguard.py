@@ -38,6 +38,23 @@ _FAKE_IP_NETWORKS = (
 
 _REDIRECT_STATUSES = (301, 302, 303, 307, 308)
 
+# 运行期追加的白名单域名 (如 --mirror 显式指定的自定义镜像),
+# 仅当前进程有效, 不写入配置
+_EXTRA_ALLOWED_HOSTS = set()
+
+
+def add_allowed_host(host: str) -> bool:
+    """把用户显式指定的域名加入本次运行的请求白名单。
+
+    仅用于命令行 --mirror 等操作者主动指定的场景; https 强制与
+    私网/环回拒绝逻辑不受影响。
+    """
+    host = (host or "").strip().lower()
+    if not host:
+        return False
+    _EXTRA_ALLOWED_HOSTS.add(host)
+    return True
+
 
 def _allowed_hosts() -> set:
     """允许的域名集合 = GitHub 官方域名 + 配置的镜像源域名"""
@@ -67,7 +84,7 @@ def is_safe_url(url: str) -> bool:
     if not host:
         return False
 
-    return host in _allowed_hosts()
+    return host in _allowed_hosts() or host in _EXTRA_ALLOWED_HOSTS
 
 
 def safe_get(url: str, timeout, headers: dict | None = None) -> "requests.Response":

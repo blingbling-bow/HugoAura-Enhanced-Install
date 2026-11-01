@@ -324,6 +324,8 @@ class InstallerModel:
         args.path = None
         args.dir = None
         args.dry_run = False
+        args.mirror = self.install_options.get("mirror")
+        args.no_speedtest = self.install_options.get("no_speedtest", False)
 
         version = self.install_options["version"]
         version_type = self.install_options.get("version_type", "")
