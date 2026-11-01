@@ -69,3 +69,24 @@ jobs:
         with:
           name: AuraInstaller-py3-8
           path: dist/AuraInstaller-py3-8.exe
+
+  # 每次推送都跑回归测试, 尽早拦截破坏性改动
+  test:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install
+
+      - name: Run regression tests
+        run: poetry run pytest -q
