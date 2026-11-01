@@ -88,5 +88,8 @@ jobs:
       - name: Install dependencies
         run: poetry install
 
+      - name: Install pytest
+        run: poetry run pip install pytest
+
       - name: Run regression tests
         run: poetry run pytest -q
